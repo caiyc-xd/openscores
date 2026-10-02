@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>公开曲谱库 · Open Scores</title>
+<meta name="description" content="公开版权（CC0 / 公共领域）乐谱检索与下载：艺术歌曲与弦乐四重奏，均为作曲家去世 ≥ 70 年的作品。">
+<link rel="stylesheet" href="style.css">
+<style>
+  .controls { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; align-items:center; }
+  .controls input, .controls select {
+    font:inherit; padding:8px 10px; border:1px solid var(--line);
+    border-radius:8px; background:var(--card); color:var(--fg);
+  }
+  .controls input[type=search] { flex:1 1 240px; min-width:200px; }
+  .count { color:var(--muted); margin-left:auto; white-space:nowrap; }
+  .tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:var(--card); position:sticky; top:0; cursor:pointer; white-space:nowrap; }
+  tbody tr:hover { background:var(--card); }
+  .dl { display:inline-block; padding:4px 10px; border:1px solid var(--accent);
+        border-radius:7px; color:var(--accent); text-decoration:none; white-space:nowrap; }
+  .dl:hover { background:var(--accent); color:var(--bg); }
+  .muted2 { color:var(--muted); font-size:13px; }
+  .err { color:#c0392b; }
+  @media (max-width:560px){ th:nth-child(4),td:nth-child(4),
+    th:nth-child(5),td:nth-child(5),th:nth-child(6),td:nth-child(6){ display:none; } }
+</style>
+</head>
+<body>
+<header class="site">
+  <a class="brand" href="index.html">公开领域乐谱 <span>Open Scores</span></a>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="player.html">播放器</a>
+    <a href="library.html">曲库</a>
+    <a href="https://github.com/caiyc-xd/openscores">源码 / 贡献</a>
+  </nav>
+</header>
+<main>
+<h1>公开曲谱库</h1>
+<p class="lead">公开版权（CC0 / 公共领域）乐谱的检索与下载。收录艺术歌曲与弦乐四重奏，均为作曲家去世 ≥ 70 年的作品。</p>
+<div class="card" id="summary">正在加载曲库清单…</div>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="搜索：作曲家 / 曲名 / 词作者 / 贡献人…" autocomplete="off">
+  <select id="fCat"><option value="">全部体裁</option></select>
+  <select id="fEra"><option value="">全部时期</option></select>
+  <select id="fNat"><option value="">全部国别</option></select>
+  <span class="count" id="count"></span>
+</div>
+
+<div class="tablewrap">
+<table id="tbl">
+  <thead>
+    <tr>
+      <th>#</th><th>作曲家</th><th>曲名</th><th>体裁</th><th>时期</th><th>国别</th><th>贡献人（转谱/校对）</th><th>源</th><th>下载</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+
+<p class="muted2" style="margin-top:14px">
+  下载为 <code>.mxl</code>（压缩的 MusicXML，可用 MuseScore、Finale 等直接打开）。
+  所有谱面排版（engraving）按 <strong>CC0-1.0</strong> 献出；原作本身已过版权保护期。
+  逐曲溯源见 <a href="scores/CATALOG.md">CATALOG.md</a>，完整清单见 <a href="scores/catalog.json">catalog.json</a>。
+</p>
+</main>
+<footer class="site">
+  <p>公开领域乐谱 Open Scores · 基于 alphaTab 渲染 · <a href="https://github.com/caiyc-xd/openscores">源码与贡献</a></p>
+  <p class="muted">乐谱按 CC0 献出；原作已过版权保护期。播放为合成示意，非录音。</p>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+let DATA = [];
+
+function dlUrl(p){ return "scores/" + p.replace(/\.(musicxml|xml)$/i, ".mxl"); }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function uniq(arr){ return [...new Set(arr.filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh")); }
+
+function buildFilters(){
+  const cats = uniq(DATA.map(d=>d.category));
+  const eras = uniq(DATA.map(d=>d.era));
+  const nats = uniq(DATA.map(d=>d.nationality));
+  cats.forEach(v=>$("#fCat").append(new Option(v, v)));
+  eras.forEach(v=>$("#fEra").append(new Option(v, v)));
+  nats.forEach(v=>$("#fNat").append(new Option(v, v)));
+}
+
+function render(){
+  const q = $("#q").value.trim().toLowerCase();
+  const fc = $("#fCat").value, fe = $("#fEra").value, fn = $("#fNat").value;
+  const rows = DATA.filter(d=>{
+    if(fc && d.category!==fc) return false;
+    if(fe && d.era!==fe) return false;
+    if(fn && d.nationality!==fn) return false;
+    if(q){
+      const hay = [d.composer,d.title,d.work,d.movement,d.lyricist,d.contributor,d.arranger]
+                  .filter(Boolean).join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const ncomposers = new Set(rows.map(d=>d.composer)).size;
+  $("#count").textContent = `共 ${rows.length} 首 · ${ncomposers} 位作曲家`;
+  const tb = $("#rows"); tb.innerHTML = "";
+  rows.forEach((d,i)=>{
+    const tr = document.createElement("tr");
+    const src = d.source_url || d.imslp || "";
+    const srcCell = src ? `<a href="${esc(src)}" target="_blank" rel="noopener">源站 ↗</a>` : "—";
+    const cat = (d.category||"").split(" ")[0];
+    const playUrl = "player.html?score=" + encodeURIComponent("scores/" + d.path.replace(/\.(musicxml|xml)$/i, ".mxl"));
+    tr.innerHTML =
+      `<td>${i+1}</td>`+
+      `<td>${esc(d.composer)}<div class="muted2">${esc(d.born)}–${esc(d.died)}</div></td>`+
+      `<td>${esc(d.title)}</td>`+
+      `<td>${esc(cat)}</td>`+
+      `<td>${esc(d.era)}</td>`+
+      `<td>${esc(d.nationality)}</td>`+
+      `<td class="muted2">${esc(d.contributor||"—")}</td>`+
+      `<td>${srcCell}</td>`+
+      `<td><a class="dl" href="${esc(playUrl)}">试听</a> <a class="dl" href="${esc(dlUrl(d.path))}" download>↓ .mxl</a></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function init(summary){
+  buildFilters();
+  $("#summary").innerHTML =
+    `<strong>${summary.n} 首</strong> 公开版权乐谱 · ${summary.composers} 位作曲家 · `+
+    `${summary.cats.join("；")} · 许可 <strong>CC0-1.0</strong>`;
+  ["q","fCat","fEra","fNat"].forEach(id=>$("#"+id).addEventListener("input", render));
+  render();
+}
+
+fetch("scores/catalog.json")
+  .then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
+  .then(j=>{
+    DATA = j.pieces || [];
+    const composers = new Set(DATA.map(d=>d.composer));
+    const cats = uniq(DATA.map(d=>d.category)).map(c=>c.split(" ")[0]);
+    init({n:DATA.length, composers:composers.size, cats});
+  })
+  .catch(e=>{
+    $("#summary").innerHTML = `<span class="err">清单加载失败：${esc(e.message)}。`+
+      `请通过 GitHub Pages 访问，或确认 scores/catalog.json 已随仓库发布。</span>`;
+  });
+</script>
+</body>
+</html>

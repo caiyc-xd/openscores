@@ -1,0 +1,39 @@
+/* 乐谱学伴儿 站点样式：轻量、无依赖、深浅色自适应 */
+:root {
+  --bg: #f7fafd; --fg: #16283c; --muted: #5b7186;
+  --accent: #0b3c6b; --card: #ffffff; --line: #dbe6f1;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0f1720; --fg:#e6eef7; --muted:#9fb3c8; --accent:#8ec5ff; --card:#16212c; --line:#24313d; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.75 -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+}
+header.site, footer.site {
+  display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+  padding: 18px 22px; border-bottom: 1px solid var(--line); background: var(--card);
+}
+footer.site { border-bottom: 0; border-top: 1px solid var(--line); display: block; color: var(--muted); }
+.brand { font-weight: 700; font-size: 18px; color: var(--fg); text-decoration: none; }
+.brand span { color: var(--muted); font-weight: 400; font-size: 14px; }
+header nav { margin-left: auto; display: flex; gap: 16px; }
+header nav a { color: var(--accent); text-decoration: none; }
+main { max-width: 760px; margin: 0 auto; padding: 28px 22px 60px; }
+img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line);
+      margin: 10px 0; display: block; }
+h1 { font-size: 30px; line-height: 1.3; margin: 8px 0 6px; }
+h2 { font-size: 21px; margin: 34px 0 10px; }
+h3 { font-size: 17px; margin: 24px 0 8px; }
+p, li { color: var(--fg); }
+code { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 90%; }
+a { color: var(--accent); }
+ul { padding-left: 22px; }
+.lead { color: var(--muted); font-size: 17px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; margin: 18px 0;
+}
+.muted { color: var(--muted); }
+footer.site p { margin: 4px 0; }

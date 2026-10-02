@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>公开领域乐谱 Open Scores</title>
+<meta name="description" content="公开领域（CC0 / 公共领域）乐谱的网页渲染与试听，基于 alphaTab 开源引擎。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site">
+  <a class="brand" href="index.html">公开领域乐谱 <span>Open Scores</span></a>
+  <nav>
+    <a href="player.html">播放器</a>
+    <a href="library.html">曲库</a>
+    <a href="https://github.com/caiyc-xd/openscores">源码 / 贡献</a>
+  </nav>
+</header>
+<main>
+  <h1>公开领域乐谱 · Open Scores</h1>
+  <p class="lead">公开版权（CC0 / 公共领域）乐谱的网页渲染与试听。基于 <a href="https://www.alphatab.net/" target="_blank" rel="noopener">alphaTab</a> 开源引擎，可在线看谱、听谱。</p>
+  <div class="card">
+    <p><a href="player.html?score=scores/艺术歌曲/Jane%20Bingham%20Abbott/Jane%20Bingham%20Abbott%20-%20Just%20for%20Today.mxl">▶ 打开播放器试听示例曲</a></p>
+    <p><a href="library.html">浏览全部曲库（205 首）</a></p>
+  </div>
+  <h2>项目说明</h2>
+  <ul>
+    <li>所有谱面排版（engraving）按 <strong>CC0-1.0</strong> 献出；原作本身已过版权保护期（作曲家去世 ≥ 70 年）。</li>
+    <li>渲染引擎 alphaTab（MIT）、制谱字体 Bravura（SIL OFL 1.1）、合成音色 FluidR3 GM（MIT），许可全文见 <a href="licenses/">licenses/</a>。</li>
+    <li>本仓库为开放项目，欢迎通过 Issues / Pull Requests 完善曲库与播放器。</li>
+  </ul>
+  <h2>本地运行</h2>
+  <pre><code>python3 -m http.server 8080
+# 浏览器打开 http://localhost:8080/player.html?score=scores/...</code></pre>
+  <p class="muted">提示：请用本地 http 服务器打开，而非 file:// 直接双击，否则浏览器会禁止读取本地谱文件。</p>
+</main>
+<footer class="site">
+  <p>公开领域乐谱 Open Scores · 基于 alphaTab 渲染 · <a href="https://github.com/caiyc-xd/openscores">源码与贡献</a></p>
+  <p class="muted">乐谱按 CC0 献出；原作已过版权保护期。播放为合成示意，非录音。</p>
+</footer>
+</body>
+</html>
