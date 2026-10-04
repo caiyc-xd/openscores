@@ -28,7 +28,7 @@ index.html        开放项目首页
 player.html       曲谱渲染 + 试听播放器（布局切换 / 分页翻页 / 播放光标 / 总谱·分谱 / 分谱独奏）
 library.html      曲库检索与下载
 style.css         样式
-player/           alphaTab 引擎 + Bravura 制谱字体 + FluidR3 / sonivox 合成音色
+player/           alphaTab 引擎 + Bravura 制谱字体 + FluidR3 GM 合成音色
 scores/           公开领域乐谱（CC0）与清单
 licenses/         开放依赖的许可全文（alphaTab MPL-2.0、Bravura SIL OFL 1.1、FluidR3 GM MIT）
 ```
@@ -42,7 +42,6 @@ licenses/         开放依赖的许可全文（alphaTab MPL-2.0、Bravura SIL O
 | alphaTab 渲染引擎（`player/alphaTab.min.js`，官方发布构建，**未修改**） | **MPL-2.0**（见 [`licenses/alphaTab-MPL-2.0.txt`](licenses/alphaTab-MPL-2.0.txt)） |
 | Bravura 制谱字体 | SIL Open Font License 1.1 |
 | FluidR3 GM 音色（`player/FluidR3_GM.sf3`） | MIT |
-| sonivox 音色（`player/sonivox.sf2`，仅作音色加载失败时的回退） | 来源与许可**待确认**，见下方「已知待办」 |
 
 许可全文见 [`licenses/`](licenses/)（含各组件来源地址）。
 
@@ -54,10 +53,11 @@ licenses/         开放依赖的许可全文（alphaTab MPL-2.0、Bravura SIL O
 许可声明与全文随仓库分发（`licenses/alphaTab-MPL-2.0.txt`），源码形式可从上游取得 ——
 <https://github.com/CoderLine/alphaTab>（版本见 `player/` 内构建文件）。
 
-## 已知待办（许可）
+## 许可相关说明
 
-- `player/sonivox.sf2`：来源与许可未能确认（Android Sonivox 派生音色库在网上广泛流传，但缺少明确的许可声明）。
-  处置选项：① 补上确切来源与许可文件；② 直接移除，仅保留 MIT 的 FluidR3 GM 与在线回退提示。
+- `player/sonivox.sf2`（来源与许可无法确认的回退音色库，2026-10 调研时发现）**已移除**：
+  现在只保留 MIT 许可的 FluidR3 GM，音色加载失败时页面给出排查提示，不再回退到来源不明的数据。
+- 本仓库是**独立开源项目**，与 MuseScore / IMSLP 的 **OpenScore** 计划（同名）**没有隶属、赞助或合作关系**。
 - alphaTab 的 `LICENSE.header` 还列出了其内置子模块的许可，如需在分发物中附带，请一并从上游取得。
 
 ## 贡献

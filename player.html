@@ -83,12 +83,7 @@
     <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1">
     <span id="speedVal">1.0×</span>
   </label>
-  <label>音色：
-    <select id="soundfont">
-      <option value="player/FluidR3_GM.sf3">FluidR3 GM（压缩·MIT）</option>
-      <option value="player/sonivox.sf2">sonivox（原·小巧）</option>
-    </select>
-  </label>
+  <label>音色：<span class="muted" title="随仓库分发的音色库，MIT 许可">FluidR3 GM（压缩 · MIT）</span></label>
   <span class="pg" id="pageCtl">
     <button class="pbtn sm" id="prevPage">‹ 上一页</button>
     <span class="pageInfo" id="pageInfo">第 1 / 1 页</span>
@@ -257,8 +252,6 @@ function loadScore(rel){
   function applySpeed(){ const v = parseFloat(speedEl.value); speedVal.textContent = v.toFixed(1)+"×"; if(api.player) api.player.playbackSpeed = v; }
   speedEl.addEventListener("input", applySpeed);
   // 音色库切换（支持已就位的压缩 sf3）
-  const sfSel = $("#soundfont");
-  sfSel.addEventListener("change", function(){ status.textContent = "正在加载音色库…"; showLoad(0); try { api.loadSoundFont(sfSel.value); } catch(e){ status.innerHTML='<span class="err">音色库加载失败：'+esc(e.message)+'</span>'; } });
   // 音色库加载进度
   function showLoad(p){ const b=$("#loadbar"); b.hidden = (p>=1); $("#loadfill").style.width = Math.max(0,Math.min(100,p*100)).toFixed(0)+"%"; }
   function hideLoad(){ const b=$("#loadbar"); b.hidden=true; $("#loadfill").style.width="0%"; }
@@ -272,8 +265,9 @@ function loadScore(rel){
   if(api.soundFontLoadFailed && api.soundFontLoadFailed.on){
     api.soundFontLoadFailed.on(function(e){
       hideLoad();
-      status.innerHTML = '<span class="err">音色库加载失败，已回退 sonivox：'+esc((e&&e.message)||"")+'</span>';
-      try { api.loadSoundFont("player/sonivox.sf2"); } catch(_){}
+      // 回退音色库（来源不明许可）已移除：直接给出可执行的排查提示
+      status.innerHTML = '<span class="err">音色库加载失败：'+esc((e&&e.message)||"")+
+        '（请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试）</span>';
     });
   }
 

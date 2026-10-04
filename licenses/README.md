@@ -10,5 +10,5 @@
 
 - 本仓库分发的是上述组件的**未修改发布构建**；alphaTab 属于 file-level copyleft（MPL-2.0），
   按 §3.2 随分发提供源码位置（见上表上游地址）。
-- `player/sonivox.sf2`（音色加载失败时的回退库）**来源与许可待确认**，见根目录
-  [`README.md`](../README.md) 的「已知待办（许可）」。
+- 曾经的回退音色库 `player/sonivox.sf2` 来源与许可无法确认，**已于 2026-10 移除**；
+  现在仅分发 MIT 许可的 FluidR3 GM。
