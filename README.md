@@ -30,7 +30,7 @@ library.html      曲库检索与下载
 style.css         样式
 player/           alphaTab 引擎 + Bravura 制谱字体 + FluidR3 / sonivox 合成音色
 scores/           公开领域乐谱（CC0）与清单
-licenses/         开放依赖的许可全文（alphaTab MIT、Bravura SIL OFL 1.1、FluidR3 GM MIT）
+licenses/         开放依赖的许可全文（alphaTab MPL-2.0、Bravura SIL OFL 1.1、FluidR3 GM MIT）
 ```
 
 ## 许可
@@ -39,11 +39,26 @@ licenses/         开放依赖的许可全文（alphaTab MIT、Bravura SIL OFL 1
 |---|---|
 | 本仓库代码（HTML / JS / CSS） | MIT（见 [`LICENSE`](LICENSE)） |
 | 乐谱排版与转谱（`scores/`） | CC0-1.0（见 [`scores/LICENSE`](scores/LICENSE)） |
-| alphaTab 渲染引擎 | MIT |
+| alphaTab 渲染引擎（`player/alphaTab.min.js`，官方发布构建，**未修改**） | **MPL-2.0**（见 [`licenses/alphaTab-MPL-2.0.txt`](licenses/alphaTab-MPL-2.0.txt)） |
 | Bravura 制谱字体 | SIL Open Font License 1.1 |
-| FluidR3 GM / sonivox 音色 | MIT |
+| FluidR3 GM 音色（`player/FluidR3_GM.sf3`） | MIT |
+| sonivox 音色（`player/sonivox.sf2`，仅作音色加载失败时的回退） | 来源与许可**待确认**，见下方「已知待办」 |
 
-许可全文见 [`licenses/`](licenses/)。
+许可全文见 [`licenses/`](licenses/)（含各组件来源地址）。
+
+### 为什么 alphaTab 是 MPL-2.0（更正）
+
+早前本页与首页把 alphaTab 写成 MIT，**不准确**：alphaTab 采用
+[Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/)（file-level copyleft，
+另有商业授权选项）。本仓库分发的是**未修改的官方发布构建**，按 MPL-2.0 §3.2 的要求：
+许可声明与全文随仓库分发（`licenses/alphaTab-MPL-2.0.txt`），源码形式可从上游取得 ——
+<https://github.com/CoderLine/alphaTab>（版本见 `player/` 内构建文件）。
+
+## 已知待办（许可）
+
+- `player/sonivox.sf2`：来源与许可未能确认（Android Sonivox 派生音色库在网上广泛流传，但缺少明确的许可声明）。
+  处置选项：① 补上确切来源与许可文件；② 直接移除，仅保留 MIT 的 FluidR3 GM 与在线回退提示。
+- alphaTab 的 `LICENSE.header` 还列出了其内置子模块的许可，如需在分发物中附带，请一并从上游取得。
 
 ## 贡献
 
