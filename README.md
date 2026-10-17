@@ -6,7 +6,9 @@
 
 ## 内容
 
-- 205 首公开版权乐谱（艺术歌曲、弦乐四重奏），均为作曲家去世 ≥ 70 年的作品。
+- 205 首公开版权乐谱（艺术歌曲、弦乐四重奏），均为作曲家去世满 70 年的作品。
+  判定口径：**公有领域起始年 = 卒年 + 71**（比通行「卒年 + 70」多留一年余量，覆盖各法域差异）；
+  由 `scripts/check-rights.py` 逐曲强制校验（CI 同跑）。
 - 乐谱排版（engraving / 转谱）按 **CC0-1.0** 献出；原作本身已过版权保护期。
 - 逐曲溯源见 [`scores/CATALOG.md`](scores/CATALOG.md)，完整清单见 [`scores/catalog.json`](scores/catalog.json)。
 
@@ -62,5 +64,5 @@ licenses/         开放依赖的许可全文（alphaTab MPL-2.0、Bravura SIL O
 
 ## 贡献
 
-- **加曲谱**：请确保为公共领域 / CC0（作曲家去世 ≥ 70 年，或权利人已献出）。提交 `scores/` 下的 `.mxl`，并在 `catalog.json` / `CATALOG.md` 补充条目与溯源。
+- **加曲谱**：请确保为公共领域 / CC0（作曲家去世 ≥ 70 年，或权利人已献出）。提交 `scores/` 下的 `.mxl`，并在 `catalog.json` / `CATALOG.md` 补充条目与溯源（转谱者 / IMSLP 编号 / 来源链接至少一项）。
 - **改进播放器**：fork 后提交 Pull Request。
