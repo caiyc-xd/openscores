@@ -1,0 +1,16 @@
+name: 功能建议
+description: 对曲库或播放器的建议
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 建议内容
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 使用场景
+    validations:
+      required: false

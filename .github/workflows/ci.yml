@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 权利审计（pd_year = 卒年 + 71 / 溯源齐全）
+        run: python3 scripts/check-rights.py
+
+      - name: 目录一致性（catalog ↔ 磁盘文件双向零容差）
+        run: python3 scripts/check-catalog-files.py
+
+      - name: 谱件合法性（MusicXML XSD）
+        run: python3 scripts/check-xml.py
+
+      - name: 许可与署名在位
+        run: |
+          for f in LICENSE licenses/alphaTab-MPL-2.0.txt licenses/Bravura-OFL-1.1.txt \
+                   licenses/FluidR3Mono_GM-MIT.txt; do
+            [ -s "$f" ] || { echo "缺 $f"; exit 1; }
+          done
+          # 页脚三要素：组件许可 / 铭刻来源 / CC0 声明，三页都要在
+          for p in index.html library.html player.html; do
+            grep -q "alphaTab" "$p" || { echo "$p 缺组件许可行"; exit 1; }
+            grep -q "铭刻来源" "$p" || { echo "$p 缺铭刻来源行"; exit 1; }
+            grep -q "CC0" "$p" || { echo "$p 缺 CC0 声明"; exit 1; }
+          done
+          echo "✅ 许可与署名在位"
+
+      - name: 页面相对链接不死链
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          root = pathlib.Path(".")
+          bad = []
+          for page in ["index.html", "library.html", "player.html"]:
+              t = (root / page).read_text(encoding="utf-8")
+              for href in re.findall(r'(?:href|src)="([^"]+)"', t):
+                  if re.match(r"^(https?://|mailto:|#|data:)", href):
+                      continue
+                  target = href.split("?")[0].split("#")[0]
+                  if target and not (root / target).exists():
+                      bad.append(f"{page}: {href}")
+          if bad:
+              print("❌ 死链："); [print("  ·", b) for b in bad]; sys.exit(1)
+          print("✅ 相对链接全部有效")
+          PY

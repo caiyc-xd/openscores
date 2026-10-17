@@ -1,0 +1,25 @@
+name: 问题反馈
+description: 报告渲染 / 播放 / 数据错误
+labels: [bug]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: 涉及页面 / 曲目
+      placeholder: 如 library.html 的《Just for Today》，或 player.html
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 发生了什么，期望是什么
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: 浏览器与版本 / 设备
+    validations:
+      required: false
