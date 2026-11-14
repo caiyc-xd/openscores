@@ -163,6 +163,7 @@ let api = null;
 let pages = [], curPage = 0, playing = false;
 let domBound = false;
 let soundFontReady = false;
+let currentBlobUrl = null;
 
 function initDomControls(){
   if(domBound) return; domBound = true;
@@ -242,12 +243,14 @@ function disableAllControls(){
   $("#prevPage").disabled = true; $("#nextPage").disabled = true;
 }
 
-function ensureApiWithFile(buf){
+function ensureApiWithFile(url){
   if(api){ try { if(api.destroy) api.destroy(); } catch(e){} }
   root.innerHTML = "";
   soundFontReady = false;
+  // file 选项的载入路径只认 URL（loadScoreAsync 走 XHR，responseType=arraybuffer）。
+  // 把 File 包成 blob: URL，XHR 在本地读取字节、不发往服务器、离线也能用。
   const a = new alphaTab.AlphaTabApi(root, {
-    file: buf,                                   // ArrayBuffer：本构建的 file 选项会走 loadScoreFromBytes 本地解析
+    file: url,
     core: { engine: "svg" },
     display: { layoutMode: alphaTab.LayoutMode.Page },
     player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
@@ -336,10 +339,12 @@ async function openFile(file){
   disableAllControls();
   status.textContent = "正在解析乐谱…";
   try {
-    const buf = await file.arrayBuffer();
-    // 本构建：AlphaTabApi 无 loadScore 实例方法，alphaTab.ScoreLoader 也未挂到全局；
-    // 但 file 选项接受 ArrayBuffer（内部 load() 走 loadScoreFromBytes），重建实例并喂入字节即可本地解析。
-    ensureApiWithFile(buf);
+    // file 选项的载入路径只认 URL（loadScoreAsync 走 XHR）；把 File 包成 blob: URL，
+    // XHR 在本地读取字节、不发往服务器，离线也可用。不支持的格式（如 .mscz/.mscx）会由 alphaTab 报错。
+    const url = URL.createObjectURL(file);
+    if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = url;
+    ensureApiWithFile(url);
   } catch(e){
     status.innerHTML = '<span class="err">打开失败：'+esc((e&&e.message)||(e&&e.name)||e||"未知错误")+'</span>';
   }
