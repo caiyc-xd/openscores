@@ -163,6 +163,7 @@ let api = null;
 let pages = [], curPage = 0, playing = false;
 let domBound = false;
 let soundFontReady = false;
+let resourcesReady = false;
 let currentBlobUrl = null;
 
 function initDomControls(){
@@ -204,10 +205,9 @@ function bindApi(a){
   });
   a.scoreLoaded.on(function(){
     rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
-    enableNavControls();
-    status.textContent = "乐谱已载入。等待音色库就绪后即可播放。";
-    // 兜底：若音色库走惰性加载（无 soundFontLoaded 事件），8 秒后也放开播放，避免按钮卡死
-    setTimeout(function(){ if(!soundFontReady) enablePlayControls(); }, 8000);
+    status.textContent = resourcesReady
+      ? "乐谱已载入。所有资源就绪，可点击「播放」（离线亦可）。"
+      : "乐谱已载入。等待播放所需资源就绪后即可播放。";
   });
 
   if(a.soundFontLoad && a.soundFontLoad.on){
@@ -217,8 +217,13 @@ function bindApi(a){
     });
   }
   a.soundFontLoaded.on(function(){
-    hideLoad(); soundFontReady = true; enablePlayControls();
-    status.textContent = "就绪。点击「播放」试听合成示意。";
+    hideLoad(); soundFontReady = true; resourcesReady = true;
+    enableAllControls();
+    if(api && api.score){
+      status.textContent = "所有资源已就绪（已缓存，可断网验证）。可点击「播放」。";
+    } else {
+      status.textContent = "所有资源已就绪（已缓存，可断网验证：渲染与播放均不依赖网络）。请选择乐谱文件。";
+    }
   });
   if(a.soundFontLoadFailed && a.soundFontLoadFailed.on){
     a.soundFontLoadFailed.on(function(e){
@@ -240,10 +245,28 @@ function enableNavControls(){
 function enablePlayControls(){
   $("#play").disabled = false; $("#stop").disabled = false;
 }
+function enableAllControls(){
+  enableNavControls(); enablePlayControls();
+}
 function disableAllControls(){
   $("#play").disabled = true; $("#stop").disabled = true;
   layoutSel.disabled = true; partSel.disabled = true; speedEl.disabled = true;
   $("#prevPage").disabled = true; $("#nextPage").disabled = true;
+}
+
+function ensureApi(){
+  if(api) return api;
+  // 页面进入即创建实例并加载播放所需资源（含 14MB 音色库）：资源就绪前按钮保持置灰，
+  // 就绪后才放开；资源由 Service Worker 缓存，断网仍可渲染并播放。
+  const a = new alphaTab.AlphaTabApi(root, {
+    core: { engine: "svg" },
+    display: { layoutMode: alphaTab.LayoutMode.Page },
+    player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
+  });
+  bindApi(a);
+  window.__api = a;
+  api = a;
+  return a;
 }
 
 function ensureApiWithFile(url){
@@ -339,7 +362,6 @@ async function openFile(file){
   $("#title").textContent = name || "本地乐谱";
   $("#meta").textContent = "本地文件 · 仅浏览器内处理，不发送到任何服务器";
   document.getElementById("workspace").hidden = false;
-  disableAllControls();
   status.textContent = "正在解析乐谱…";
   try {
     // file 选项的载入路径只认 URL（loadScoreAsync 走 XHR）；把 File 包成 blob: URL，
@@ -347,7 +369,8 @@ async function openFile(file){
     const url = URL.createObjectURL(file);
     if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
     currentBlobUrl = url;
-    ensureApiWithFile(url);
+    if(!api) ensureApi();          // 兜底：若页面加载时未创建实例
+    ensureApiWithFile(url);         // 载入该乐谱（音色库已从缓存/网络就绪）
   } catch(e){
     status.innerHTML = '<span class="err">打开失败：'+esc((e&&e.message)||(e&&e.name)||e||"未知错误")+'</span>';
   }
@@ -364,7 +387,9 @@ dz.addEventListener("drop", e => { const f = e.dataTransfer.files && e.dataTrans
 
 // 启动：DOM 控件仅绑定一次（引用模块级 api，随实例重建更新）；初始全部置灰
 initDomControls();
-disableAllControls();
+ensureApi();                 // 进入页面即加载播放所需资源（音色库等）
+disableAllControls();        // 资源就绪前一律置灰，不给用
+status.textContent = "正在加载播放所需资源（音色库约 14MB）…就绪后按钮将自动启用，可断网验证。";
 
 // 看门狗：若 15 秒仍在解析，给出排查指引
 setTimeout(function(){
