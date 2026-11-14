@@ -1,16 +1,35 @@
 // Service Worker：缓存站点静态资源（alphaTab 引擎、Bravura 字体、音色库 FluidR3_GM.sf3、样式等），
 // 使「打开本地谱」在首次在线访问后，断网也能渲染并播放。
 // 仅作渐进增强：注册/缓存失败都不影响基本功能。
-const CACHE = 'openscores-static-v1';
+const CACHE = 'openscores-static-v2';
+
+// 预缓存清单（含 14MB 音色库）：首次联网访问页面即后台下载并缓存，
+// 之后即使断网也能播放；无需先打开乐谱文件。
+const PRECACHE = [
+  './',
+  './index.html',
+  './player.html',
+  './library.html',
+  './my-score.html',
+  './style.css',
+  './player/alphaTab.min.js',
+  './player/FluidR3_GM.sf3',
+  './licenses/Bravura-OFL-1.1.txt',
+  './licenses/FluidR3Mono_GM-MIT.txt',
+  './licenses/alphaTab-MPL-2.0.txt'
+];
 
 self.addEventListener('install', () => { self.skipWaiting(); });
 
 self.addEventListener('activate', (event) => {
+  // 清理旧缓存并接管页面（快速完成，不阻塞）
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
+  // 后台预缓存大体积资源（含音色库），不阻塞激活
+  caches.open(CACHE).then(c => c.addAll(PRECACHE)).catch(() => {});
 });
 
 self.addEventListener('fetch', (event) => {

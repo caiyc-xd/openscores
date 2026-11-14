@@ -93,7 +93,7 @@
   <ul>
     <li>仅支持 <strong>MusicXML</strong> 格式：<code>.mxl</code>（压缩包）/ <code>.musicxml</code> / <code>.xml</code>。</li>
     <li>文件<strong>仅在你的浏览器内</strong>解析、渲染与播放，<strong>不会发送到任何服务器</strong>；关闭页面即清除，本地不留存。</li>
-    <li>音频在你点击「播放」后由浏览器<strong>本地合成</strong>，无需联网；合成音色库（约 14&nbsp;MB）随站点静态分发，首次会下载一次并缓存（含断网缓存，离线也能播放）。</li>
+    <li>音频在你点击「播放」后由浏览器<strong>本地合成</strong>，无需联网；合成音色库（约 14&nbsp;MB）随站点静态分发，<strong>首次联网访问本页即会后台下载并缓存（无需先打开乐谱）</strong>，之后断开网络也能播放。</li>
     <li>打开失败常见原因：文件不是有效的 MusicXML（例如图片扫描件、MIDI，或 MuseScore 的 <code>.mscz</code> / <code>.mscx</code> 暂不支持）。请改用「导出为 MusicXML」后重试。</li>
     <li>曲谱越大、声部越多，渲染与播放越依赖你的设备性能；处理时间因设备而异。</li>
   </ul>
@@ -223,8 +223,11 @@ function bindApi(a){
   if(a.soundFontLoadFailed && a.soundFontLoadFailed.on){
     a.soundFontLoadFailed.on(function(e){
       hideLoad();
-      status.innerHTML = '<span class="err">音色库加载失败：'+esc((e&&e.message)||"")+
-        '（请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试）</span>';
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false);
+      const msg = offline
+        ? '当前处于离线状态，且音色库尚未缓存。请先联网打开本页面一次（无需打开乐谱），等待音色库下载完成（约十几 MB，状态栏会显示进度）；下载完成后即可断网播放。'
+        : '请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试。';
+      status.innerHTML = '<span class="err">音色库加载失败：'+esc((e&&e.message)||"")+'（'+msg+'）</span>';
     });
   }
   setTimeout(rebuildPages, 2000);
