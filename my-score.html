@@ -40,7 +40,7 @@
   .at-cursor-beat { background:#c0392b !important; width:2px !important; }
   .at-cursor-bar  { background:rgba(192,57,43,0.30) !important; }
   .at-selection   { background:rgba(192,57,43,0.12) !important; }
-  .loadbar { height:6px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:8px; }
+  .loadbar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:8px; }
   .loadfill { height:100%; width:0%; background:var(--accent); transition:width .12s linear; }
   .ctrl-row input[type=range]{ vertical-align:middle; }
   #speedVal { color:var(--muted); font-size:13px; min-width:34px; display:inline-block; }
@@ -51,6 +51,8 @@
     color:var(--accent); background:transparent; border-radius:9px; padding:9px 20px; margin:6px;
   }
   .filebtn:hover { background:var(--accent); color:var(--bg); }
+  .filebtn.disabled { opacity:.5; pointer-events:none; cursor:not-allowed; }
+  .dropzone.disabled { opacity:.5; pointer-events:none; cursor:not-allowed; }
   .dropzone {
     border:2px dashed var(--line); border-radius:14px; padding:26px 18px; margin:14px 0;
     text-align:center; color:var(--muted); cursor:pointer; background:var(--card);
@@ -211,9 +213,20 @@ function bindApi(a){
   });
 
   if(a.soundFontLoad && a.soundFontLoad.on){
-    a.soundFontLoad.on(function(p){
-      const frac = (p && typeof p==="object" && p.total) ? (p.current/p.total) : (typeof p==="number" ? p : 0);
-      showLoad(frac||0);
+    a.soundFontLoad.on(function(p, total){
+      let cur = 0, tot = 0;
+      if(p && typeof p==="object"){
+        cur = (typeof p.loaded === "number") ? p.loaded : (typeof p.current === "number" ? p.current : 0);
+        tot = (typeof total === "number") ? total : (typeof p.total === "number" ? p.total : 0);
+      } else if(typeof p === "number"){
+        cur = p; tot = (typeof total === "number") ? total : 0;
+      }
+      const frac = tot ? cur/tot : 0;
+      showLoad(frac);
+      // 仅在首次下载（资源未就绪）时覆盖状态文案，避免后续从缓存重载时刷掉乐谱状态
+      if(!resourcesReady){
+        status.textContent = "正在下载合成音色库（约 14MB）… " + Math.round(frac*100) + "%（下载完成前「选择乐谱文件」不可用）";
+      }
     });
   }
   a.soundFontLoaded.on(function(){
@@ -238,6 +251,10 @@ function bindApi(a){
   setTimeout(rebuildPages, 2000);
 }
 
+function setOpenDisabled(d){
+  const f = $("#file"); if(f) f.disabled = d;
+  document.querySelectorAll(".filebtn, .dropzone").forEach(function(el){ el.classList.toggle("disabled", d); });
+}
 function enableNavControls(){
   layoutSel.disabled = false; partSel.disabled = false; speedEl.disabled = false;
   $("#prevPage").disabled = false; $("#nextPage").disabled = false;
@@ -247,11 +264,13 @@ function enablePlayControls(){
 }
 function enableAllControls(){
   enableNavControls(); enablePlayControls();
+  setOpenDisabled(false);          // 音色库就绪后放开「选择乐谱文件」
 }
 function disableAllControls(){
   $("#play").disabled = true; $("#stop").disabled = true;
   layoutSel.disabled = true; partSel.disabled = true; speedEl.disabled = true;
   $("#prevPage").disabled = true; $("#nextPage").disabled = true;
+  setOpenDisabled(true);           // 资源未就绪前「选择乐谱文件」置灰
 }
 
 function ensureApi(){
@@ -353,7 +372,7 @@ function applyTrackAudio(){
   for(let k=0;k<n;k++) safeSolo(k, k===solo);
 }
 function applySpeed(){ const v = parseFloat(speedEl.value); speedVal.textContent = v.toFixed(1)+"×"; if(api.player) api.player.playbackSpeed = v; }
-function showLoad(p){ const b=$("#loadbar"); b.hidden = (p>=1); $("#loadfill").style.width = Math.max(0,Math.min(100,p*100)).toFixed(0)+"%"; }
+function showLoad(p){ const b=$("#loadbar"); b.hidden = (p<=0 || p>=1); $("#loadfill").style.width = Math.max(0,Math.min(100,p*100)).toFixed(0)+"%"; }
 function hideLoad(){ const b=$("#loadbar"); b.hidden=true; $("#loadfill").style.width="0%"; }
 
 async function openFile(file){
