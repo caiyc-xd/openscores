@@ -20,7 +20,8 @@
     font:inherit; cursor:pointer; border:1px solid var(--accent); color:var(--accent);
     background:transparent; border-radius:9px; padding:7px 14px; min-width:96px;
   }
-  .pbtn:hover { background:var(--accent); color:var(--bg); }
+  .pbtn:hover:not(:disabled) { background:var(--accent); color:var(--bg); }
+  .pbtn:disabled { opacity:.45; cursor:not-allowed; }
   .ptime { font-variant-numeric:tabular-nums; color:var(--muted); font-size:13px; white-space:nowrap; }
   .pwrap { flex:1 1 160px; height:8px; background:var(--line); border-radius:6px; overflow:hidden; min-width:120px; }
   .pfill { height:100%; width:0%; background:var(--accent); transition:width .08s linear; }
@@ -30,9 +31,11 @@
   @media (prefers-color-scheme: dark){ #alphaTab { background:#fff; } #alphaTab { color:#16283c; } }
   .ctrl-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:0 0 14px; }
   .ctrl-row label { color:var(--muted); font-size:14px; }
-  .ctrl-row select { font:inherit; padding:5px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:inherit; }
+  .ctrl-row select, .ctrl-row input[type=range] { font:inherit; padding:5px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:inherit; }
+  .ctrl-row select:disabled, .ctrl-row input[type=range]:disabled { opacity:.45; cursor:not-allowed; }
   .pg { display:inline-flex; align-items:center; gap:10px; }
   .pbtn.sm { min-width:auto; padding:6px 12px; font-size:14px; }
+  .pbtn.sm:disabled { opacity:.45; cursor:not-allowed; }
   .pageInfo { color:var(--muted); font-size:14px; font-variant-numeric:tabular-nums; }
   .at-cursor-beat { background:#c0392b !important; width:2px !important; }
   .at-cursor-bar  { background:rgba(192,57,43,0.30) !important; }
@@ -90,7 +93,7 @@
   <ul>
     <li>仅支持 <strong>MusicXML</strong> 格式：<code>.mxl</code>（压缩包）/ <code>.musicxml</code> / <code>.xml</code>。</li>
     <li>文件<strong>仅在你的浏览器内</strong>解析、渲染与播放，<strong>不会发送到任何服务器</strong>；关闭页面即清除，本地不留存。</li>
-    <li>音频在你点击「播放」后由浏览器<strong>本地合成</strong>，无需联网；合成音色库（约 14&nbsp;MB）随站点静态分发、首次会下载一次并缓存。</li>
+    <li>音频在你点击「播放」后由浏览器<strong>本地合成</strong>，无需联网；合成音色库（约 14&nbsp;MB）随站点静态分发，首次会下载一次并缓存（含断网缓存，离线也能播放）。</li>
     <li>打开失败常见原因：文件不是有效的 MusicXML（例如图片扫描件、MIDI，或 MuseScore 的 <code>.mscz</code> / <code>.mscx</code> 暂不支持）。请改用「导出为 MusicXML」后重试。</li>
     <li>曲谱越大、声部越多，渲染与播放越依赖你的设备性能；处理时间因设备而异。</li>
   </ul>
@@ -98,33 +101,33 @@
 
 <div id="workspace" hidden>
   <div class="player-bar">
-    <button class="pbtn" id="play">▶ 播放</button>
-    <button class="pbtn" id="stop">■ 停止</button>
+    <button class="pbtn" id="play" disabled>▶ 播放</button>
+    <button class="pbtn" id="stop" disabled>■ 停止</button>
     <span class="ptime" id="time">0:00 / 0:00</span>
     <div class="pwrap"><div class="pfill" id="fill"></div></div>
   </div>
 
   <div class="ctrl-row">
     <label>布局：
-      <select id="layout">
+      <select id="layout" disabled>
         <option value="page">分页（自动换行）</option>
         <option value="horizontal">流式（横向滚动）</option>
       </select>
     </label>
     <label>声部：
-      <select id="part" hidden>
+      <select id="part" hidden disabled>
         <option value="all">总谱（全部声部）</option>
       </select>
     </label>
     <label>速度：
-      <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1">
+      <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1" disabled>
       <span id="speedVal">1.0×</span>
     </label>
     <label>音色：<span class="muted" title="随仓库分发的音色库，MIT 许可">FluidR3 GM（压缩 · MIT）</span></label>
     <span class="pg" id="pageCtl">
-      <button class="pbtn sm" id="prevPage">‹ 上一页</button>
+      <button class="pbtn sm" id="prevPage" disabled>‹ 上一页</button>
       <span class="pageInfo" id="pageInfo">第 1 / 1 页</span>
-      <button class="pbtn sm" id="nextPage">下一页 ›</button>
+      <button class="pbtn sm" id="nextPage" disabled>下一页 ›</button>
     </span>
   </div>
 
@@ -158,18 +161,23 @@ function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;
 
 let api = null;
 let pages = [], curPage = 0, playing = false;
+let domBound = false;
+let soundFontReady = false;
 
-function ensureApi(){
-  if(api) return api;
-  const a = new alphaTab.AlphaTabApi(root, {
-    core: { engine: "svg" },
-    display: { layoutMode: alphaTab.LayoutMode.Page },
-    player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
+function initDomControls(){
+  if(domBound) return; domBound = true;
+  $("#play").onclick = () => { try { if(api) api.playPause(); } catch(e){ status.innerHTML='<span class="err">播放失败：'+esc(e.message)+'</span>'; } };
+  $("#stop").onclick = () => { try { if(api) api.stop(); $("#fill").style.width="0%"; $("#time").textContent="0:00 / 0:00"; } catch(e){} };
+  partSel.addEventListener("change", function(){ status.textContent="正在渲染…"; renderCurrent(); applyTrackAudio(); });
+  layoutSel.addEventListener("change", function(){
+    const isPage = layoutSel.value === "page";
+    pageCtl.hidden = !isPage;
+    if(api) api.settings.display.layoutMode = isPage ? alphaTab.LayoutMode.Page : alphaTab.LayoutMode.Horizontal;
+    renderCurrent();
   });
-  bindApi(a);
-  window.__api = a;
-  api = a;
-  return a;
+  speedEl.addEventListener("input", applySpeed);
+  $("#prevPage").addEventListener("click", () => goToPage(curPage-1));
+  $("#nextPage").addEventListener("click", () => goToPage(curPage+1));
 }
 
 function bindApi(a){
@@ -190,27 +198,16 @@ function bindApi(a){
   });
   a.renderStarted.on(function(){ status.textContent = "正在渲染…"; });
   a.renderFinished.on(function(){
-    status.textContent = "就绪。点击「播放」试听合成示意。";
     rebuildPages();
     setTimeout(rebuildPages, 400);
   });
   a.scoreLoaded.on(function(){
-    status.textContent = "就绪。点击「播放」试听合成示意。";
+    rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
+    enableNavControls();
+    status.textContent = "乐谱已载入。等待音色库就绪后即可播放。";
+    // 兜底：若音色库走惰性加载（无 soundFontLoaded 事件），8 秒后也放开播放，避免按钮卡死
+    setTimeout(function(){ if(!soundFontReady) enablePlayControls(); }, 8000);
   });
-
-  $("#play").onclick = () => { try { a.playPause(); } catch(e){ status.innerHTML='<span class="err">播放失败：'+esc(e.message)+'</span>'; } };
-  $("#stop").onclick = () => { try { a.stop(); $("#fill").style.width="0%"; $("#time").textContent="0:00 / 0:00"; } catch(e){} };
-
-  partSel.addEventListener("change", function(){ status.textContent="正在渲染…"; renderCurrent(); applyTrackAudio(); });
-  layoutSel.addEventListener("change", function(){
-    const isPage = layoutSel.value === "page";
-    pageCtl.hidden = !isPage;
-    a.settings.display.layoutMode = isPage ? alphaTab.LayoutMode.Page : alphaTab.LayoutMode.Horizontal;
-    renderCurrent();
-  });
-  speedEl.addEventListener("input", applySpeed);
-  $("#prevPage").addEventListener("click", () => goToPage(curPage-1));
-  $("#nextPage").addEventListener("click", () => goToPage(curPage+1));
 
   if(a.soundFontLoad && a.soundFontLoad.on){
     a.soundFontLoad.on(function(p){
@@ -218,7 +215,10 @@ function bindApi(a){
       showLoad(frac||0);
     });
   }
-  a.soundFontLoaded.on(function(){ hideLoad(); });
+  a.soundFontLoaded.on(function(){
+    hideLoad(); soundFontReady = true; enablePlayControls();
+    status.textContent = "就绪。点击「播放」试听合成示意。";
+  });
   if(a.soundFontLoadFailed && a.soundFontLoadFailed.on){
     a.soundFontLoadFailed.on(function(e){
       hideLoad();
@@ -227,6 +227,35 @@ function bindApi(a){
     });
   }
   setTimeout(rebuildPages, 2000);
+}
+
+function enableNavControls(){
+  layoutSel.disabled = false; partSel.disabled = false; speedEl.disabled = false;
+  $("#prevPage").disabled = false; $("#nextPage").disabled = false;
+}
+function enablePlayControls(){
+  $("#play").disabled = false; $("#stop").disabled = false;
+}
+function disableAllControls(){
+  $("#play").disabled = true; $("#stop").disabled = true;
+  layoutSel.disabled = true; partSel.disabled = true; speedEl.disabled = true;
+  $("#prevPage").disabled = true; $("#nextPage").disabled = true;
+}
+
+function ensureApiWithFile(buf){
+  if(api){ try { if(api.destroy) api.destroy(); } catch(e){} }
+  root.innerHTML = "";
+  soundFontReady = false;
+  const a = new alphaTab.AlphaTabApi(root, {
+    file: buf,                                   // ArrayBuffer：本构建的 file 选项会走 loadScoreFromBytes 本地解析
+    core: { engine: "svg" },
+    display: { layoutMode: alphaTab.LayoutMode.Page },
+    player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
+  });
+  bindApi(a);
+  window.__api = a;
+  api = a;
+  return a;
 }
 
 // —— 分页翻页 ——
@@ -304,17 +333,13 @@ async function openFile(file){
   $("#title").textContent = name || "本地乐谱";
   $("#meta").textContent = "本地文件 · 仅浏览器内处理，不发送到任何服务器";
   document.getElementById("workspace").hidden = false;
-  const a = ensureApi();
+  disableAllControls();
   status.textContent = "正在解析乐谱…";
   try {
     const buf = await file.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    // 关键：本构建的 AlphaTabApi 没有 loadScore 实例方法；改用 ScoreLoader 同步解析字节，再 renderScore
-    const score = alphaTab.ScoreLoader.loadScoreFromBytes(bytes, a.settings);
-    a.renderScore(score);
-    // renderScore 同步设置 api.score 并触发渲染；显式完成分谱 / 音频 / 速度设置（与 scoreLoaded 等价，幂等）
-    rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
-    status.textContent = "就绪。点击「播放」试听合成示意。";
+    // 本构建：AlphaTabApi 无 loadScore 实例方法，alphaTab.ScoreLoader 也未挂到全局；
+    // 但 file 选项接受 ArrayBuffer（内部 load() 走 loadScoreFromBytes），重建实例并喂入字节即可本地解析。
+    ensureApiWithFile(buf);
   } catch(e){
     status.innerHTML = '<span class="err">打开失败：'+esc((e&&e.message)||(e&&e.name)||e||"未知错误")+'</span>';
   }
@@ -329,13 +354,24 @@ dz.addEventListener("click", () => $("#file").click());
 ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
 dz.addEventListener("drop", e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) openFile(f); });
 
-// 看门狗：若 15 秒仍未就绪，给出排查指引
+// 启动：DOM 控件仅绑定一次（引用模块级 api，随实例重建更新）；初始全部置灰
+initDomControls();
+disableAllControls();
+
+// 看门狗：若 15 秒仍在解析，给出排查指引
 setTimeout(function(){
-  if(/正在载入|正在渲染|正在解析/.test(status.textContent)){
+  if(/正在解析乐谱|正在渲染/.test(status.textContent)){
     status.innerHTML = '<span class="err">处理超时（15s）。若已通过 http:// 访问：按 F12 打开控制台，把红色报错截图；'+
       '常见原因：文件不是有效的 MusicXML，或 Bravura 字体未加载（需 player/font/ 目录）。</span>';
   }
 }, 15000);
+
+// 离线支持：注册 Service Worker 缓存静态资源（含 14MB 音色库），断网也能渲染并播放（渐进增强）
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){ /* 忽略：离线缓存为渐进增强 */ });
+  });
+}
 </script>
 </body>
 </html>
