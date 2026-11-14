@@ -40,8 +40,10 @@
   .at-cursor-beat { background:#c0392b !important; width:2px !important; }
   .at-cursor-bar  { background:rgba(192,57,43,0.30) !important; }
   .at-selection   { background:rgba(192,57,43,0.12) !important; }
-  .loadbar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:8px; }
+  .loadbar { height:10px; background:var(--line); border-radius:5px; overflow:hidden; margin-top:8px; }
   .loadfill { height:100%; width:0%; background:var(--accent); transition:width .12s linear; }
+  .loadbar.indeterminate .loadfill { width:35%; animation:indet 1.1s ease-in-out infinite; }
+  @keyframes indet { 0%{ transform:translateX(-120%); } 100%{ transform:translateX(320%); } }
   .ctrl-row input[type=range]{ vertical-align:middle; }
   #speedVal { color:var(--muted); font-size:13px; min-width:34px; display:inline-block; }
   /* 打开本地谱：拖拽区 / 选择按钮 / 提示 */
@@ -167,6 +169,8 @@ let domBound = false;
 let soundFontReady = false;
 let resourcesReady = false;
 let currentBlobUrl = null;
+let soundFontBlobUrl = null;
+let soundFontFetching = false;
 
 function initDomControls(){
   if(domBound) return; domBound = true;
@@ -212,23 +216,8 @@ function bindApi(a){
       : "乐谱已载入。等待播放所需资源就绪后即可播放。";
   });
 
-  if(a.soundFontLoad && a.soundFontLoad.on){
-    a.soundFontLoad.on(function(p, total){
-      let cur = 0, tot = 0;
-      if(p && typeof p==="object"){
-        cur = (typeof p.loaded === "number") ? p.loaded : (typeof p.current === "number" ? p.current : 0);
-        tot = (typeof total === "number") ? total : (typeof p.total === "number" ? p.total : 0);
-      } else if(typeof p === "number"){
-        cur = p; tot = (typeof total === "number") ? total : 0;
-      }
-      const frac = tot ? cur/tot : 0;
-      showLoad(frac);
-      // 仅在首次下载（资源未就绪）时覆盖状态文案，避免后续从缓存重载时刷掉乐谱状态
-      if(!resourcesReady){
-        status.textContent = "正在下载合成音色库（约 14MB）… " + Math.round(frac*100) + "%（下载完成前「选择乐谱文件」不可用）";
-      }
-    });
-  }
+  // 注：本构建的 soundFontLoad 进度事件只在下载完成时触发一次，无法驱动中途进度条。
+  // 因此进度条改由我们自己的流式 fetch（startSoundFontDownload）驱动，这里不再监听它。
   a.soundFontLoaded.on(function(){
     hideLoad(); soundFontReady = true; resourcesReady = true;
     enableAllControls();
@@ -275,16 +264,17 @@ function disableAllControls(){
 
 function ensureApi(){
   if(api) return api;
-  // 页面进入即创建实例并加载播放所需资源（含 14MB 音色库）：资源就绪前按钮保持置灰，
-  // 就绪后才放开；资源由 Service Worker 缓存，断网仍可渲染并播放。
+  // 页面进入即创建实例；音色库由我们自己的流式 fetch 拉取（带真实下载进度），
+  // 下载完成后以 blob: URL 喂给播放器。资源就绪前按钮保持置灰，就绪后才放开。
   const a = new alphaTab.AlphaTabApi(root, {
     core: { engine: "svg" },
     display: { layoutMode: alphaTab.LayoutMode.Page },
-    player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
+    player: { enablePlayer: true, enableCursor: true }
   });
   bindApi(a);
   window.__api = a;
   api = a;
+  startSoundFontDownload();   // 进入页面即下载音色库并显示进度
   return a;
 }
 
@@ -292,17 +282,18 @@ function ensureApiWithFile(url){
   if(api){ try { if(api.destroy) api.destroy(); } catch(e){} }
   root.innerHTML = "";
   soundFontReady = false;
-  // file 选项的载入路径只认 URL（loadScoreAsync 走 XHR，responseType=arraybuffer）。
-  // 把 File 包成 blob: URL，XHR 在本地读取字节、不发往服务器、离线也能用。
+  // score 用 file 选项（blob: URL，本地读取字节，离线可用）；
+  // 音色库用已下载好的 blob: URL 喂入（若尚未下载完，则待下载完成后由 startSoundFontDownload 自动应用）。
   const a = new alphaTab.AlphaTabApi(root, {
     file: url,
     core: { engine: "svg" },
     display: { layoutMode: alphaTab.LayoutMode.Page },
-    player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
+    player: { enablePlayer: true, enableCursor: true }
   });
   bindApi(a);
   window.__api = a;
   api = a;
+  applySoundFont();
   return a;
 }
 
@@ -375,6 +366,69 @@ function applySpeed(){ const v = parseFloat(speedEl.value); speedVal.textContent
 function showLoad(p){ const b=$("#loadbar"); b.hidden = (p<=0 || p>=1); $("#loadfill").style.width = Math.max(0,Math.min(100,p*100)).toFixed(0)+"%"; }
 function hideLoad(){ const b=$("#loadbar"); b.hidden=true; $("#loadfill").style.width="0%"; }
 
+// 把已下载的音色库字节（blob: URL）喂给当前播放器实例；若尚未下载完成则静默跳过（下载完会再调用）。
+function applySoundFont(){
+  if(soundFontBlobUrl && api){
+    try {
+      if(typeof api.loadSoundFont === "function") api.loadSoundFont(soundFontBlobUrl);
+      else api.settings.player.soundFont = soundFontBlobUrl;
+    } catch(e){ /* 失败由 soundFontLoadFailed 处理 */ }
+  }
+}
+
+// 进入页面即流式下载 14MB 音色库，用真实进度驱动进度条；完成后以 blob: URL 交给播放器。
+// 该 fetch 走 Service Worker，会被缓存，从而断网也可复用（离线时由 SW 直供）。
+function startSoundFontDownload(){
+  if(soundFontBlobUrl || soundFontFetching) return;
+  soundFontFetching = true;
+  showLoad(0.001);
+  status.textContent = "正在下载合成音色库（约 14MB）… 0%";
+  fetch("player/FluidR3_GM.sf3").then(function(res){
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const total = parseInt(res.headers.get("Content-Length") || "0", 10);
+    const bar = $("#loadbar");
+    if(total > 0) bar.classList.remove("indeterminate");
+    else bar.classList.add("indeterminate");   // 无 Content-Length 时显示流动条
+    if(!res.body || !res.body.getReader){
+      // 环境不支持流式读取：退化为整段下载（无中途进度）
+      return res.arrayBuffer().then(function(buf){
+        soundFontBlobUrl = URL.createObjectURL(new Blob([buf], {type:"application/octet-stream"}));
+        showLoad(1);
+        status.textContent = "合成音色库已下载。";
+        setTimeout(applySoundFont, 200);
+      });
+    }
+    const reader = res.body.getReader();
+    const chunks = []; let received = 0;
+    function pump(){
+      return reader.read().then(function(r){
+        if(r.done){
+          const all = new Uint8Array(received);
+          let pos = 0;
+          for(let i=0;i<chunks.length;i++){ all.set(chunks[i], pos); pos += chunks[i].length; }
+          soundFontBlobUrl = URL.createObjectURL(new Blob([all], {type:"application/octet-stream"}));
+          showLoad(1);
+          status.textContent = "合成音色库已下载。";
+          setTimeout(applySoundFont, 200);   // 让用户看到 100% 再加载
+          return;
+        }
+        chunks.push(r.value); received += r.value.length;
+        const frac = total ? received/total : 0;
+        if(total) showLoad(frac);
+        status.textContent = "正在下载合成音色库（约 14MB）… " + Math.round(frac*100) + "%";
+        return pump();
+      });
+    }
+    return pump();
+  }).catch(function(err){
+    soundFontFetching = false;
+    const offline = (typeof navigator !== "undefined" && navigator.onLine === false);
+    status.innerHTML = '<span class="err">音色库下载失败：'+esc((err&&err.message)||err||"未知错误")+'（'+
+      (offline ? '当前离线且未缓存。请先联网打开本页面一次（无需打开乐谱），等待音色库下载完成后再断网验证。'
+               : '请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试。')+'）</span>';
+  });
+}
+
 async function openFile(file){
   if(!file) return;
   const name = file.name.replace(/\.(musicxml|xml|mxl)$/i, "");
@@ -406,9 +460,8 @@ dz.addEventListener("drop", e => { const f = e.dataTransfer.files && e.dataTrans
 
 // 启动：DOM 控件仅绑定一次（引用模块级 api，随实例重建更新）；初始全部置灰
 initDomControls();
-ensureApi();                 // 进入页面即加载播放所需资源（音色库等）
 disableAllControls();        // 资源就绪前一律置灰，不给用
-status.textContent = "正在加载播放所需资源（音色库约 14MB）…就绪后按钮将自动启用，可断网验证。";
+ensureApi();                 // 进入页面即下载音色库并显示真实进度（状态栏由下载逻辑更新）
 
 // 看门狗：若 15 秒仍在解析，给出排查指引
 setTimeout(function(){
