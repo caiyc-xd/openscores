@@ -11,6 +11,7 @@
   由 `scripts/check-rights.py` 逐曲强制校验（CI 同跑）。
 - 乐谱排版（engraving / 转谱）按 **CC0-1.0** 献出；原作本身已过版权保护期。
 - 逐曲溯源见 [`scores/CATALOG.md`](scores/CATALOG.md)，完整清单见 [`scores/catalog.json`](scores/catalog.json)。
+- **打开本地谱**：可在浏览器内直接打开你自己设备上的 MusicXML 乐谱（`.mxl` / `.musicxml` / `.xml`），渲染与试听全部在本地完成，文件不会发送到任何服务器、关闭页面即清除。仅支持 MusicXML，不支持 MuseScore 的 `.mscz` / `.mscx`。
 
 ## 本地运行
 
@@ -29,6 +30,7 @@ python3 -m http.server 8080
 index.html        开放项目首页
 player.html       曲谱渲染 + 试听播放器（布局切换 / 分页翻页 / 播放光标 / 总谱·分谱 / 分谱独奏）
 library.html      曲库检索与下载
+my-score.html    打开本地谱：在浏览器内载入你自己的 MusicXML 乐谱并渲染 / 试听，文件不发送到服务器、本地不留存
 style.css         样式
 player/           alphaTab 引擎 + Bravura 制谱字体 + FluidR3 GM 合成音色
 scores/           公开领域乐谱（CC0）与清单

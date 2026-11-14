@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>打开本地谱 · Open Scores</title>
+<meta name="description" content="在浏览器内打开你自己的 MusicXML 乐谱并渲染、试听：文件仅在本地处理，不会发送到任何服务器。">
+<link rel="stylesheet" href="style.css">
+<style>
+  .back { display:inline-block; margin:6px 0 4px; color:var(--accent); text-decoration:none; }
+  .meta { color:var(--muted); font-size:14px; margin:6px 0 14px; }
+  .meta a { color:var(--accent); }
+  .player-bar {
+    position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px;
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:10px 14px; margin:6px 0 16px; flex-wrap:wrap;
+  }
+  .pbtn {
+    font:inherit; cursor:pointer; border:1px solid var(--accent); color:var(--accent);
+    background:transparent; border-radius:9px; padding:7px 14px; min-width:96px;
+  }
+  .pbtn:hover { background:var(--accent); color:var(--bg); }
+  .ptime { font-variant-numeric:tabular-nums; color:var(--muted); font-size:13px; white-space:nowrap; }
+  .pwrap { flex:1 1 160px; height:8px; background:var(--line); border-radius:6px; overflow:hidden; min-width:120px; }
+  .pfill { height:100%; width:0%; background:var(--accent); transition:width .08s linear; }
+  #alphaTab { width:100%; max-height:72vh; overflow:auto; border:1px solid var(--line); border-radius:12px; padding:10px; background:var(--card); }
+  .status { color:var(--muted); font-size:14px; min-height:20px; margin-top:8px; }
+  .err { color:#c0392b; }
+  @media (prefers-color-scheme: dark){ #alphaTab { background:#fff; } #alphaTab { color:#16283c; } }
+  .ctrl-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:0 0 14px; }
+  .ctrl-row label { color:var(--muted); font-size:14px; }
+  .ctrl-row select { font:inherit; padding:5px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:inherit; }
+  .pg { display:inline-flex; align-items:center; gap:10px; }
+  .pbtn.sm { min-width:auto; padding:6px 12px; font-size:14px; }
+  .pageInfo { color:var(--muted); font-size:14px; font-variant-numeric:tabular-nums; }
+  .at-cursor-beat { background:#c0392b !important; width:2px !important; }
+  .at-cursor-bar  { background:rgba(192,57,43,0.30) !important; }
+  .at-selection   { background:rgba(192,57,43,0.12) !important; }
+  .loadbar { height:6px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:8px; }
+  .loadfill { height:100%; width:0%; background:var(--accent); transition:width .12s linear; }
+  .ctrl-row input[type=range]{ vertical-align:middle; }
+  #speedVal { color:var(--muted); font-size:13px; min-width:34px; display:inline-block; }
+  /* 打开本地谱：拖拽区 / 选择按钮 / 提示 */
+  .open { text-align:center; margin:10px 0 4px; }
+  .filebtn {
+    display:inline-block; font:inherit; cursor:pointer; border:1px solid var(--accent);
+    color:var(--accent); background:transparent; border-radius:9px; padding:9px 20px; margin:6px;
+  }
+  .filebtn:hover { background:var(--accent); color:var(--bg); }
+  .dropzone {
+    border:2px dashed var(--line); border-radius:14px; padding:26px 18px; margin:14px 0;
+    text-align:center; color:var(--muted); cursor:pointer; background:var(--card);
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone.over { border-color:var(--accent); background:var(--bg); }
+  .hints { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin:16px 0; }
+  .hints h3 { margin:0 0 8px; font-size:16px; }
+  .hints ul { margin:0; padding-left:20px; }
+  .hints li { color:var(--muted); margin:6px 0; }
+</style>
+</head>
+<body>
+<header class="site">
+  <a class="brand" href="index.html">公开领域乐谱 <span>Open Scores</span></a>
+  <nav>
+    <a href="index.html">首页</a>
+    <a href="player.html">播放器</a>
+    <a href="library.html">曲库</a>
+    <a href="my-score.html">打开本地谱</a>
+    <a href="https://github.com/caiyc-xd/openscores">源码 / 贡献</a>
+  </nav>
+</header>
+<main>
+<h1 id="title">打开本地谱</h1>
+<div class="meta" id="meta">选择本机上的 MusicXML 乐谱文件，即可在浏览器内渲染与试听。</div>
+
+<div class="open">
+  <label class="filebtn">选择乐谱文件
+    <input type="file" id="file" accept=".mxl,.musicxml,.xml,application/vnd.recordare.musicxml+xml" hidden>
+  </label>
+</div>
+<div class="dropzone" id="dropzone">
+  把乐谱文件拖到这里（仅支持 MusicXML：<code>.mxl</code> / <code>.musicxml</code> / <code>.xml</code>）
+</div>
+<p class="muted">想浏览公开领域曲库？<a href="library.html">前往曲库</a>（205 首，CC0）。</p>
+
+<div class="hints">
+  <h3>使用须知</h3>
+  <ul>
+    <li>仅支持 <strong>MusicXML</strong> 格式：<code>.mxl</code>（压缩包）/ <code>.musicxml</code> / <code>.xml</code>。</li>
+    <li>文件<strong>仅在你的浏览器内</strong>解析、渲染与播放，<strong>不会发送到任何服务器</strong>；关闭页面即清除，本地不留存。</li>
+    <li>音频在你点击「播放」后由浏览器<strong>本地合成</strong>，无需联网；合成音色库（约 14&nbsp;MB）首次会下载一次并缓存。</li>
+    <li>打开失败常见原因：文件不是有效的 MusicXML（例如图片扫描件、MIDI，或 MuseScore 的 <code>.mscz</code> / <code>.mscx</code> 暂不支持）。请改用「导出为 MusicXML」后重试。</li>
+    <li>曲谱越大、声部越多，渲染与播放越依赖你的设备性能；处理时间因设备而异。</li>
+  </ul>
+</div>
+
+<div id="workspace" hidden>
+  <div class="player-bar">
+    <button class="pbtn" id="play">▶ 播放</button>
+    <button class="pbtn" id="stop">■ 停止</button>
+    <span class="ptime" id="time">0:00 / 0:00</span>
+    <div class="pwrap"><div class="pfill" id="fill"></div></div>
+  </div>
+
+  <div class="ctrl-row">
+    <label>布局：
+      <select id="layout">
+        <option value="page">分页（自动换行）</option>
+        <option value="horizontal">流式（横向滚动）</option>
+      </select>
+    </label>
+    <label>声部：
+      <select id="part" hidden>
+        <option value="all">总谱（全部声部）</option>
+      </select>
+    </label>
+    <label>速度：
+      <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1">
+      <span id="speedVal">1.0×</span>
+    </label>
+    <label>音色：<span class="muted" title="随仓库分发的音色库，MIT 许可">FluidR3 GM（压缩 · MIT）</span></label>
+    <span class="pg" id="pageCtl">
+      <button class="pbtn sm" id="prevPage">‹ 上一页</button>
+      <span class="pageInfo" id="pageInfo">第 1 / 1 页</span>
+      <button class="pbtn sm" id="nextPage">下一页 ›</button>
+    </span>
+  </div>
+
+  <div id="alphaTab"></div>
+  <div class="status" id="status">请先选择乐谱文件。</div>
+  <div class="loadbar" id="loadbar" hidden><div class="loadfill" id="loadfill"></div></div>
+</div>
+</main>
+<footer class="site">
+  <p class="muted">打开本地谱：文件仅在浏览器内处理，不会发送到任何服务器。播放为合成示意，非录音。</p>
+  <p class="muted">字体 <a href="licenses/Bravura-OFL-1.1.txt" target="_blank" rel="noopener">Bravura</a>（SIL OFL 1.1）；音色 <a href="licenses/FluidR3Mono_GM-MIT.txt" target="_blank" rel="noopener">FluidR3 GM</a>（MIT）。渲染引擎 <a href="licenses/alphaTab-MPL-2.0.txt" target="_blank" rel="noopener">alphaTab</a>（MPL-2.0）。源码与贡献：<a href="https://github.com/caiyc-xd/openscores">GitHub</a>。</p>
+</footer>
+
+<script src="player/alphaTab.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const status = $("#status");
+
+function fmt(ms){
+  if(ms==null || isNaN(ms)) return "0:00";
+  const s = Math.max(0, Math.floor(ms/1000));
+  return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
+}
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+let api = null;
+function ensureApi(){
+  if(api) return api;
+  const a = new alphaTab.AlphaTabApi($("#alphaTab"), {
+    core: { engine: "svg" },
+    display: { layoutMode: alphaTab.LayoutMode.Page },
+    player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
+  });
+  wireControls(a);
+  window.__api = a;
+  api = a;
+  return a;
+}
+
+function wireControls(api){
+  const root = $("#alphaTab");
+  let pages = [], curPage = 0, playing = false;
+
+  api.error.on(function(e){
+    status.innerHTML = '<span class="err">打开错误：'+esc((e&&e.message)||e||"未知错误")+'</span>';
+  });
+
+  api.playerStateChanged.on(function(args){
+    const Playing = (alphaTab.PlayerState && alphaTab.PlayerState.Playing) || 1;
+    const st = (args && typeof args === "object") ? args.state : args;
+    playing = (st===Playing);
+    $("#play").textContent = playing ? "⏸ 暂停" : "▶ 播放";
+  });
+  api.playerPositionChanged.on(function(pos){
+    const cur = pos ? pos.currentTime : 0, end = pos ? pos.endTime : 0;
+    $("#time").textContent = fmt(cur) + " / " + fmt(end);
+    if(end>0) $("#fill").style.width = (100*cur/end).toFixed(2) + "%";
+    followCursor();
+  });
+  api.renderStarted.on(function(){ status.textContent = "正在渲染…"; });
+  api.renderFinished.on(function(){
+    status.textContent = "就绪。点击「播放」试听合成示意。";
+    rebuildPages();
+    setTimeout(rebuildPages, 400);
+  });
+  api.scoreLoaded.on(function(){
+    status.textContent = "就绪。点击「播放」试听合成示意。";
+    rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
+  });
+
+  $("#play").onclick = () => { try { api.playPause(); } catch(e){ status.innerHTML='<span class="err">播放失败：'+esc(e.message)+'</span>'; } };
+  $("#stop").onclick = () => { try { api.stop(); $("#fill").style.width="0%"; $("#time").textContent="0:00 / 0:00"; } catch(e){} };
+
+  // —— 布局切换 + 分页翻页 ——
+  const layoutSel = $("#layout"), pageCtl = $("#pageCtl");
+  function rebuildPages(){
+    pages = Array.from(root.querySelectorAll(".at-surface svg"));
+    if(!pages.length) pages = Array.from(root.querySelectorAll("svg"));
+    curPage = 0;
+    updatePageInfo();
+    if(layoutSel.value === "page") root.scrollTop = 0;
+  }
+  function updatePageInfo(){
+    $("#pageInfo").textContent = "第 " + (pages.length ? curPage+1 : 0) + " / " + pages.length + " 页";
+  }
+  function goToPage(i){
+    if(!pages.length) return;
+    curPage = Math.max(0, Math.min(pages.length-1, i));
+    const svg = pages[curPage];
+    if(svg){
+      const target = svg.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop;
+      root.scrollTop = target;
+    }
+    updatePageInfo();
+  }
+  function followCursor(){
+    if(!playing) return;
+    const c = document.querySelector(".at-cursor-beat");
+    if(!c) return;
+    const r = root.getBoundingClientRect(), cr = c.getBoundingClientRect(), m = 40;
+    const top = cr.top - r.top, bottom = cr.bottom - r.top;
+    if(top < m) root.scrollTop -= (m - top);
+    else if(bottom > r.height - m) root.scrollTop += (bottom - (r.height - m));
+    const left = cr.left - r.left;
+    if(left < m) root.scrollLeft -= (m - left);
+    else if(cr.right - r.left > r.width - m) root.scrollLeft += (cr.right - r.left - (r.width - m));
+  }
+
+  // —— 多声部：总谱 / 分谱 切换（renderTracks）——
+  const partSel = $("#part");
+  function currentTracks(){
+    const sc = api.score;
+    if(!sc) return null;
+    if(partSel.value === "all") return sc.tracks;
+    const i = parseInt(partSel.value, 10);
+    return [sc.tracks[i]];
+  }
+  function renderCurrent(){
+    const tr = currentTracks();
+    if(tr && tr.length) api.renderTracks(tr);
+  }
+  function rebuildPartOptions(){
+    const sc = api.score;
+    if(!sc || !sc.tracks.length) return;
+    partSel.hidden = false;
+    const cur = partSel.value || "all";
+    partSel.innerHTML = '<option value="all">总谱（全部声部）</option>'
+      + sc.tracks.map((t,i)=>{
+          const lines = t.staves.length>1 ? `（${t.staves.length} 行）` : "";
+          return `<option value="${i}">${esc(t.name || ("声部"+(i+1)))}${lines}</option>`;
+        }).join("");
+    partSel.value = cur;
+  }
+  partSel.addEventListener("change", function(){ status.textContent = "正在渲染…"; renderCurrent(); applyTrackAudio(); });
+  rebuildPartOptions();
+
+  // —— 分谱只听该声部（独奏）+ 速度 + 音色库加载进度 ——
+  function safeSolo(k, on){ try { api.changeTrackSolo(k, on); } catch(e){} }
+  function applyTrackAudio(){
+    const sc = api.score; if(!sc) return;
+    const n = sc.tracks.length;
+    const solo = (partSel.value === "all") ? -1 : parseInt(partSel.value, 10);
+    for(let k=0;k<n;k++) safeSolo(k, k===solo);
+  }
+  const speedEl = $("#speed"), speedVal = $("#speedVal");
+  function applySpeed(){ const v = parseFloat(speedEl.value); speedVal.textContent = v.toFixed(1)+"×"; if(api.player) api.player.playbackSpeed = v; }
+  speedEl.addEventListener("input", applySpeed);
+
+  function showLoad(p){ const b=$("#loadbar"); b.hidden = (p>=1); $("#loadfill").style.width = Math.max(0,Math.min(100,p*100)).toFixed(0)+"%"; }
+  function hideLoad(){ const b=$("#loadbar"); b.hidden=true; $("#loadfill").style.width="0%"; }
+  if(api.soundFontLoad && api.soundFontLoad.on){
+    api.soundFontLoad.on(function(p){
+      const frac = (p && typeof p==="object" && p.total) ? (p.current/p.total) : (typeof p==="number" ? p : 0);
+      showLoad(frac||0);
+    });
+  }
+  api.soundFontLoaded.on(function(){ hideLoad(); });
+  if(api.soundFontLoadFailed && api.soundFontLoadFailed.on){
+    api.soundFontLoadFailed.on(function(e){
+      hideLoad();
+      status.innerHTML = '<span class="err">音色库加载失败：'+esc((e&&e.message)||"")+
+        '（请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试）</span>';
+    });
+  }
+
+  pageCtl.hidden = (layoutSel.value !== "page");
+  layoutSel.addEventListener("change", function(){
+    const isPage = layoutSel.value === "page";
+    pageCtl.hidden = !isPage;
+    api.settings.display.layoutMode = isPage ? alphaTab.LayoutMode.Page : alphaTab.LayoutMode.Horizontal;
+    renderCurrent();
+  });
+  $("#prevPage").addEventListener("click", () => goToPage(curPage-1));
+  $("#nextPage").addEventListener("click", () => goToPage(curPage+1));
+  setTimeout(rebuildPages, 2000);
+}
+
+function openFile(file){
+  if(!file) return;
+  const name = file.name.replace(/\.(musicxml|xml|mxl)$/i, "");
+  $("#title").textContent = name || "本地乐谱";
+  $("#meta").textContent = "本地文件 · 仅在你的浏览器内处理，不会发送到任何服务器";
+  document.getElementById("workspace").hidden = false;
+  const a = ensureApi();
+  status.textContent = "正在载入乐谱…";
+  try { a.loadScore(file); }
+  catch(e){ status.innerHTML = '<span class="err">打开失败：'+esc(e.message)+'</span>'; }
+}
+
+// 文件选择
+$("#file").addEventListener("change", e => openFile(e.target.files && e.target.files[0]));
+// 拖拽
+const dz = $("#dropzone");
+dz.addEventListener("click", () => $("#file").click());
+["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
+dz.addEventListener("drop", e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) openFile(f); });
+
+// 看门狗：若 15 秒仍未就绪，给出排查指引
+setTimeout(function(){
+  if(/正在载入|正在渲染/.test(status.textContent)){
+    status.innerHTML = '<span class="err">处理超时（15s）。若已通过 http:// 访问：按 F12 打开控制台，把红色报错截图；'+
+      '常见原因：文件不是有效的 MusicXML，或 Bravura 字体未加载（需 player/font/ 目录）。</span>';
+  }
+}, 15000);
+</script>
+</body>
+</html>
