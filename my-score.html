@@ -174,7 +174,15 @@ let soundFontFetching = false;
 
 function initDomControls(){
   if(domBound) return; domBound = true;
-  $("#play").onclick = () => { try { if(api) api.playPause(); } catch(e){ status.innerHTML='<span class="err">播放失败：'+esc(e.message)+'</span>'; } };
+  $("#play").onclick = () => {
+    try {
+      if(!soundFontReady){
+        status.innerHTML = '<span class="err">音色库尚未就绪，请等待下载/加载完成（状态栏显示「所有资源已就绪」）后再播放。</span>';
+        return;
+      }
+      if(api) api.playPause();
+    } catch(e){ status.innerHTML='<span class="err">播放失败：'+esc(e.message)+'</span>'; }
+  };
   $("#stop").onclick = () => { try { if(api) api.stop(); $("#fill").style.width="0%"; $("#time").textContent="0:00 / 0:00"; } catch(e){} };
   partSel.addEventListener("change", function(){ status.textContent="正在渲染…"; renderCurrent(); applyTrackAudio(); });
   layoutSel.addEventListener("change", function(){
@@ -211,6 +219,7 @@ function bindApi(a){
   });
   a.scoreLoaded.on(function(){
     rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
+    applySoundFont();   // 若音色库在乐谱载入后才就绪，这里补加载（时序兜底）
     status.textContent = resourcesReady
       ? "乐谱已载入。所有资源就绪，可点击「播放」（离线亦可）。"
       : "乐谱已载入。等待播放所需资源就绪后即可播放。";
@@ -367,12 +376,14 @@ function showLoad(p){ const b=$("#loadbar"); b.hidden = (p<=0 || p>=1); $("#load
 function hideLoad(){ const b=$("#loadbar"); b.hidden=true; $("#loadfill").style.width="0%"; }
 
 // 把已下载的音色库字节（blob: URL）喂给当前播放器实例；若尚未下载完成则静默跳过（下载完会再调用）。
+let soundFontAppliedTo = null;
 function applySoundFont(){
-  if(soundFontBlobUrl && api){
+  if(soundFontBlobUrl && api && api !== soundFontAppliedTo){
     try {
       if(typeof api.loadSoundFont === "function") api.loadSoundFont(soundFontBlobUrl);
       else api.settings.player.soundFont = soundFontBlobUrl;
-    } catch(e){ /* 失败由 soundFontLoadFailed 处理 */ }
+      soundFontAppliedTo = api;   // 同一实例只加载一次，避免重复触发
+    } catch(e){ soundFontAppliedTo = null; /* 失败由 soundFontLoadFailed 处理 */ }
   }
 }
 
