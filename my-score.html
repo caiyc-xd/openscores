@@ -489,6 +489,14 @@ async function startSoundFontDownload(){
 
 async function openFile(file){
   if(!file) return;
+  // 仅支持 MusicXML（.mxl/.xml/.musicxml）。MuseScore(.mscz/.mscx)、MIDI、图片等 alphaTab 无法解析，
+  // 且其加载是异步的、openFile 的 try/catch 抓不到，会表现为「崩溃」。故先按扩展名拦截，给出可执行提示。
+  const lower = (file.name || "").toLowerCase();
+  if(!/\.(mxl|xml|musicxml)$/.test(lower)){
+    status.innerHTML = '<span class="err">不支持的文件格式：'+esc(file.name)+'。本工具仅支持 MusicXML（.mxl / .xml / .musicxml）。'+
+      '若来自 MuseScore（.mscz / .mscx）或 MIDI，请先在对应软件中「导出为 MusicXML」再打开。</span>';
+    return;
+  }
   const name = file.name.replace(/\.(musicxml|xml|mxl)$/i, "");
   $("#title").textContent = name || "本地乐谱";
   $("#meta").textContent = "本地文件 · 仅浏览器内处理，不发送到任何服务器";
@@ -515,6 +523,21 @@ dz.addEventListener("click", () => $("#file").click());
 ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
 ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
 dz.addEventListener("drop", e => { const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) openFile(f); });
+
+// 兜底：加载乐谱是异步的，alphaTab 抛出的解析/格式错误不会被 openFile 的 try/catch 捕获。
+// 这里把未处理的异步异常转成可读提示，避免表现为「崩溃/卡死」。
+window.addEventListener("unhandledrejection", function(e){
+  const msg = String((e.reason && e.reason.message) || e.reason || "");
+  if(/score|musicxml|alphatab|importer|format|zip/i.test(msg)){
+    status.innerHTML = '<span class="err">乐谱解析出错：'+esc(msg.slice(0,200))+'</span>';
+  }
+});
+window.addEventListener("error", function(e){
+  const msg = String((e.error && e.error.message) || e.message || "");
+  if(/score|musicxml|alphatab|importer|format|zip/i.test(msg)){
+    status.innerHTML = '<span class="err">乐谱处理出错：'+esc(msg.slice(0,200))+'</span>';
+  }
+});
 
 // 启动：DOM 控件仅绑定一次（引用模块级 api，随实例重建更新）；初始全部置灰
 initDomControls();
