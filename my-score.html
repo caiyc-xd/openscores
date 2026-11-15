@@ -293,7 +293,7 @@ function ensureApi(){
   // 页面进入即创建实例；音色库由我们自己的流式 fetch 拉取（带真实下载进度），
   // 下载完成后以 blob: URL 喂给播放器。资源就绪前按钮保持置灰，就绪后才放开。
   const a = new alphaTab.AlphaTabApi(root, {
-    core: { engine: "svg" },
+    core: { engine: "svg", useWorkers: false },
     display: { layoutMode: alphaTab.LayoutMode.Page },
     player: { enablePlayer: true, enableCursor: true }
   });
@@ -315,7 +315,7 @@ function ensureApiWithFile(url, enablePlayer){
   // 「仅查看」模式关闭播放器：可绕过 alphaTab 对跨小节延线/反复等复杂结构的播放引擎限制，保证至少能看谱。
   const a = new alphaTab.AlphaTabApi(root, {
     file: url,
-    core: { engine: "svg" },
+    core: { engine: "svg", useWorkers: false },
     display: { layoutMode: alphaTab.LayoutMode.Page },
     player: { enablePlayer: enablePlayer, enableCursor: enablePlayer }
   });
