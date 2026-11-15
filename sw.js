@@ -1,7 +1,7 @@
 // Service Worker：缓存站点静态资源（alphaTab 引擎、Bravura 字体、音色库 FluidR3_GM.sf3、样式等），
 // 使「打开本地谱」在首次在线访问后，断网也能渲染并播放。
 // 仅作渐进增强：注册/缓存失败都不影响基本功能。
-const CACHE = 'openscores-static-v2';
+const CACHE = 'openscores-static-v3';
 
 // 预缓存清单（含 14MB 音色库）：首次联网访问页面即后台下载并缓存，
 // 之后即使断网也能播放；无需先打开乐谱文件。

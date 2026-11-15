@@ -224,10 +224,18 @@ function bindApi(a){
     rebuildPages();
     setTimeout(rebuildPages, 400);
   });
+  // 播放器就绪（音色库+MIDI 就绪）时补渲染一次，覆盖 1.9.0 初期渲染被丢弃的情况。
+  if(a.playerReady && a.playerReady.on){
+    a.playerReady.on(function(){ forceRenderIfEmpty(); ensureReadyStatus(); });
+  }
   a.scoreLoaded.on(function(){
     if(openWatchdog) clearTimeout(openWatchdog);   // 载入成功，撤销超时看门狗
     rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
     applySoundFont();   // 若音色库在乐谱载入后才就绪，这里补加载（时序兜底）
+    // 1.9.0 在播放器就绪前可能丢弃初期渲染：多次延迟补渲染，确保谱面最终出现
+    setTimeout(forceRenderIfEmpty, 400);
+    setTimeout(forceRenderIfEmpty, 1200);
+    setTimeout(function(){ forceRenderIfEmpty(); ensureReadyStatus(); }, 2600);
     if(!currentEnablePlayer){
       status.innerHTML = '<span class="warn">已以「仅查看」模式打开（未启用试听）。该乐谱的播放引擎初始化在此版本受限，故仅渲染；'+
         '如需试听，请在 MuseScore 中展开反复/简化后重新导出，或取消勾选「仅查看模式」再打开。</span>';
@@ -241,10 +249,13 @@ function bindApi(a){
   // 注：本构建的 soundFontLoad 进度事件只在下载完成时触发一次，无法驱动中途进度条。
   // 因此进度条改由我们自己的流式 fetch（startSoundFontDownload）驱动，这里不再监听它。
   a.soundFontLoaded.on(function(){
+    if(soundFontRetryTimer){ clearTimeout(soundFontRetryTimer); soundFontRetryTimer = null; }
+    soundFontRetryCount = 0;
     hideLoad(); soundFontReady = true; resourcesReady = true;
     enableNavControls();
     if(currentEnablePlayer) enablePlayControls();   // 仅查看模式下不放开试听按钮
     setOpenDisabled(false);
+    forceRenderIfEmpty();   // 播放器就绪后补一次渲染（1.9.0 初期渲染可能被丢弃）
     if(currentEnablePlayer){
       status.textContent = (api && api.score)
         ? "所有资源已就绪（已缓存，可断网验证）。可点击「播放」。"
@@ -310,6 +321,8 @@ function ensureApiWithFile(url, enablePlayer){
   if(api){ try { if(api.destroy) api.destroy(); } catch(e){} }
   root.innerHTML = "";
   soundFontReady = false;
+  soundFontRetryCount = 0;   // 新实例：重置音色库重试计数
+  if(soundFontRetryTimer){ clearTimeout(soundFontRetryTimer); soundFontRetryTimer = null; }
   // score 用 file 选项（blob: URL，本地读取字节，离线可用）；
   // 音色库用已下载好的 blob: URL 喂入（若尚未下载完，则待下载完成后由 startSoundFontDownload 自动应用）。
   // 「仅查看」模式关闭播放器：可绕过 alphaTab 对跨小节延线/反复等复杂结构的播放引擎限制，保证至少能看谱。
@@ -372,6 +385,23 @@ function renderCurrent(){
   const tr = currentTracks();
   if(tr && tr.length) api.renderTracks(tr);
 }
+// 若已有乐谱但尚未渲染出任何 SVG（1.9.0 在就绪前可能丢弃初期渲染），强制补渲染一次。
+function forceRenderIfEmpty(){
+  if(api && api.score && root.querySelectorAll("svg").length === 0){
+    try { renderCurrent(); } catch(e){}
+  }
+}
+// 渲染完成后修正状态栏文案（1.9.0 的 renderFinished 对 renderTracks 不一定触发，避免一直停在「正在渲染…」）。
+function ensureReadyStatus(){
+  if(!api || !api.score || root.querySelectorAll("svg").length === 0) return;
+  if(!currentEnablePlayer){
+    status.innerHTML = '<span class="warn">已以「仅查看」模式打开（未启用试听）。如需试听，请在 MuseScore 中展开反复/简化后重新导出。</span>';
+  } else if(soundFontReady){
+    status.textContent = "乐谱已载入。所有资源就绪，可点击「播放」（离线亦可）。";
+  } else {
+    status.textContent = "乐谱已载入。等待音色库就绪后即可播放。";
+  }
+}
 function rebuildPartOptions(){
   const sc = api.score;
   if(!sc || !sc.tracks.length) return;
@@ -395,15 +425,24 @@ function applySpeed(){ const v = parseFloat(speedEl.value); speedVal.textContent
 function showLoad(p){ const b=$("#loadbar"); b.hidden = (p<=0 || p>=1); $("#loadfill").style.width = Math.max(0,Math.min(100,p*100)).toFixed(0)+"%"; }
 function hideLoad(){ const b=$("#loadbar"); b.hidden=true; $("#loadfill").style.width="0%"; }
 
-// 把已下载的音色库字节（blob: URL）喂给当前播放器实例；若尚未下载完成则静默跳过（下载完会再调用）。
-let soundFontAppliedTo = null;
+// 把已下载的音色库字节（blob: URL）喂给当前播放器实例。
+// 注意：alphaTab 1.9.0 在「播放器尚未就绪」时调用 loadSoundFont 会静默丢弃（返回 false 不报错），
+// 因此这里在未收到 soundFontLoaded 前按固定间隔重试，直到播放器就绪、真正加载成功为止。
+let soundFontRetryTimer = null;
+let soundFontRetryCount = 0;
 function applySoundFont(){
-  if(soundFontBlobUrl && api && api !== soundFontAppliedTo){
-    try {
-      if(typeof api.loadSoundFont === "function") api.loadSoundFont(soundFontBlobUrl);
-      else api.settings.player.soundFont = soundFontBlobUrl;
-      soundFontAppliedTo = api;   // 同一实例只加载一次，避免重复触发
-    } catch(e){ soundFontAppliedTo = null; /* 失败由 soundFontLoadFailed 处理 */ }
+  if(!currentEnablePlayer) return;                 // 仅查看模式不需要音色库
+  if(soundFontReady || !soundFontBlobUrl || !api) return;
+  try {
+    if(typeof api.loadSoundFont === "function") api.loadSoundFont(soundFontBlobUrl);
+    else api.settings.player.soundFont = soundFontBlobUrl;
+  } catch(e){ /* 失败由 soundFontLoadFailed 处理 */ }
+  // 未就绪则稍后重试（最多约 20s），就绪后重试会真正触发 soundFontLoaded。
+  if(soundFontRetryTimer) clearTimeout(soundFontRetryTimer);
+  if(soundFontRetryCount++ < 66){
+    soundFontRetryTimer = setTimeout(function(){
+      if(!soundFontReady && soundFontBlobUrl && api) applySoundFont();
+    }, 300);
   }
 }
 
@@ -414,7 +453,7 @@ async function startSoundFontDownload(){
   if(soundFontBlobUrl || soundFontFetching) return;
   soundFontFetching = true;
   const localUrl = "player/FluidR3_GM.sf3";
-  const CACHE_NAME = "openscores-static-v2";
+  const CACHE_NAME = "openscores-static-v3";
   showLoad(0.001);
   status.textContent = "正在准备合成音色库（约 14MB）…";
 
@@ -590,13 +629,23 @@ window.addEventListener("error", function(e){
 // 启动：DOM 控件仅绑定一次（引用模块级 api，随实例重建更新）；初始全部置灰
 initDomControls();
 disableAllControls();        // 资源就绪前一律置灰，不给用
+setOpenDisabled(false);      // 例外：「选择乐谱文件」不依赖音色库，立即放开，保证随时能开谱（试听待音色库就绪后再放开）
 ensureApi();                 // 进入页面即下载音色库并显示真实进度（状态栏由下载逻辑更新）
 
-// 离线支持：注册 Service Worker 缓存静态资源（含 14MB 音色库），断网也能渲染并播放（渐进增强）
+// 离线支持（渐进增强）。注意：Service Worker 对 alphaTab.min.js 是「缓存优先」，
+// 会把旧引擎一直喂回来，导致引擎升级不生效（硬刷也绕不过 SW）。故：
+// - 本地（localhost/127.0.0.1）：主动注销旧 SW 并清空缓存，保证永远加载最新代码；
+// - 线上：正常注册 SW（缓存版本已升到 v3，旧缓存会被清理，老用户自愈到新引擎）。
 if('serviceWorker' in navigator){
-  window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){ /* 忽略：离线缓存为渐进增强 */ });
-  });
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if(isLocal){
+    navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); }).catch(function(){});
+    if(window.caches){ caches.keys().then(function(ks){ ks.forEach(function(k){ caches.delete(k); }); }).catch(function(){}); }
+  } else {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){ /* 忽略：离线缓存为渐进增强 */ });
+    });
+  }
 }
 </script>
 </body>
