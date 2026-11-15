@@ -28,6 +28,7 @@
   #alphaTab { width:100%; max-height:72vh; overflow:auto; border:1px solid var(--line); border-radius:12px; padding:10px; background:var(--card); }
   .status { color:var(--muted); font-size:14px; min-height:20px; margin-top:8px; }
   .err { color:#c0392b; }
+  .warn { color:#b9770e; }
   @media (prefers-color-scheme: dark){ #alphaTab { background:#fff; } #alphaTab { color:#16283c; } }
   .ctrl-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:0 0 14px; }
   .ctrl-row label { color:var(--muted); font-size:14px; }
@@ -53,6 +54,8 @@
     color:var(--accent); background:transparent; border-radius:9px; padding:9px 20px; margin:6px;
   }
   .filebtn:hover { background:var(--accent); color:var(--bg); }
+  .chk { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:14px; margin-top:8px; cursor:pointer; }
+  .chk input { width:auto; }
   .filebtn.disabled { opacity:.5; pointer-events:none; cursor:not-allowed; }
   .dropzone.disabled { opacity:.5; pointer-events:none; cursor:not-allowed; }
   .dropzone {
@@ -86,6 +89,7 @@
   <label class="filebtn">选择乐谱文件
     <input type="file" id="file" accept=".mxl,.musicxml,.xml,application/vnd.recordare.musicxml+xml" hidden>
   </label>
+  <label class="chk"><input type="checkbox" id="viewOnly"> 仅查看模式（跳过试听；复杂/超大乐谱打不开时勾选）</label>
 </div>
 <div class="dropzone" id="dropzone">
   把乐谱文件拖到这里（仅支持 MusicXML：<code>.mxl</code> / <code>.musicxml</code> / <code>.xml</code>）
@@ -153,6 +157,7 @@ const root = $("#alphaTab");
 const layoutSel = $("#layout");
 const partSel = $("#part");
 const speedEl = $("#speed");
+const viewOnlyEl = $("#viewOnly");
 const speedVal = $("#speedVal");
 const pageCtl = $("#pageCtl");
 
@@ -170,6 +175,8 @@ let soundFontReady = false;
 let resourcesReady = false;
 let currentBlobUrl = null;
 let soundFontBlobUrl = null;
+let currentEnablePlayer = true;   // 当前谱是否启用试听（仅查看模式时为 false）
+let openWatchdog = null;          // 打开超时看门狗（卡在解析/渲染时自动回退到「仅查看」）
 let soundFontFetching = false;
 
 function initDomControls(){
@@ -218,22 +225,32 @@ function bindApi(a){
     setTimeout(rebuildPages, 400);
   });
   a.scoreLoaded.on(function(){
+    if(openWatchdog) clearTimeout(openWatchdog);   // 载入成功，撤销超时看门狗
     rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
     applySoundFont();   // 若音色库在乐谱载入后才就绪，这里补加载（时序兜底）
-    status.textContent = resourcesReady
-      ? "乐谱已载入。所有资源就绪，可点击「播放」（离线亦可）。"
-      : "乐谱已载入。等待播放所需资源就绪后即可播放。";
+    if(!currentEnablePlayer){
+      status.innerHTML = '<span class="warn">已以「仅查看」模式打开（未启用试听）。该乐谱的播放引擎初始化在此版本受限，故仅渲染；'+
+        '如需试听，请在 MuseScore 中展开反复/简化后重新导出，或取消勾选「仅查看模式」再打开。</span>';
+    } else {
+      status.textContent = resourcesReady
+        ? "乐谱已载入。所有资源就绪，可点击「播放」（离线亦可）。"
+        : "乐谱已载入。等待播放所需资源就绪后即可播放。";
+    }
   });
 
   // 注：本构建的 soundFontLoad 进度事件只在下载完成时触发一次，无法驱动中途进度条。
   // 因此进度条改由我们自己的流式 fetch（startSoundFontDownload）驱动，这里不再监听它。
   a.soundFontLoaded.on(function(){
     hideLoad(); soundFontReady = true; resourcesReady = true;
-    enableAllControls();
-    if(api && api.score){
-      status.textContent = "所有资源已就绪（已缓存，可断网验证）。可点击「播放」。";
+    enableNavControls();
+    if(currentEnablePlayer) enablePlayControls();   // 仅查看模式下不放开试听按钮
+    setOpenDisabled(false);
+    if(currentEnablePlayer){
+      status.textContent = (api && api.score)
+        ? "所有资源已就绪（已缓存，可断网验证）。可点击「播放」。"
+        : "所有资源已就绪（已缓存，可断网验证：渲染与播放均不依赖网络）。请选择乐谱文件。";
     } else {
-      status.textContent = "所有资源已就绪（已缓存，可断网验证：渲染与播放均不依赖网络）。请选择乐谱文件。";
+      status.innerHTML = '<span class="warn">音色库已就绪。当前为「仅查看」模式，本乐谱未启用试听。</span>';
     }
   });
   if(a.soundFontLoadFailed && a.soundFontLoadFailed.on){
@@ -287,17 +304,20 @@ function ensureApi(){
   return a;
 }
 
-function ensureApiWithFile(url){
+function ensureApiWithFile(url, enablePlayer){
+  enablePlayer = (enablePlayer !== false);   // 默认启用试听；传 false 为「仅查看」
+  currentEnablePlayer = enablePlayer;
   if(api){ try { if(api.destroy) api.destroy(); } catch(e){} }
   root.innerHTML = "";
   soundFontReady = false;
   // score 用 file 选项（blob: URL，本地读取字节，离线可用）；
   // 音色库用已下载好的 blob: URL 喂入（若尚未下载完，则待下载完成后由 startSoundFontDownload 自动应用）。
+  // 「仅查看」模式关闭播放器：可绕过 alphaTab 对跨小节延线/反复等复杂结构的播放引擎限制，保证至少能看谱。
   const a = new alphaTab.AlphaTabApi(root, {
     file: url,
     core: { engine: "svg" },
     display: { layoutMode: alphaTab.LayoutMode.Page },
-    player: { enablePlayer: true, enableCursor: true }
+    player: { enablePlayer: enablePlayer, enableCursor: enablePlayer }
   });
   bindApi(a);
   window.__api = a;
@@ -513,6 +533,8 @@ async function openFile(file){
   $("#meta").textContent = "本地文件 · 仅浏览器内处理，不发送到任何服务器";
   document.getElementById("workspace").hidden = false;
   status.textContent = "正在解析乐谱…";
+  // 仅查看模式：勾选后跳过试听，可绕过 alphaTab 对部分复杂结构（跨小节延线/反复等）的播放限制，保证至少能看谱。
+  const enablePlayer = !viewOnlyEl.checked;
   try {
     // file 选项的载入路径只认 URL（loadScoreAsync 走 XHR）；把 File 包成 blob: URL，
     // XHR 在本地读取字节、不发往服务器，离线也可用。不支持的格式（如 .mscz/.mscx）会由 alphaTab 报错。
@@ -520,10 +542,22 @@ async function openFile(file){
     if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
     currentBlobUrl = url;
     if(!api) ensureApi();          // 兜底：若页面加载时未创建实例
-    ensureApiWithFile(url);         // 载入该乐谱（音色库已从缓存/网络就绪）
+    ensureApiWithFile(url, enablePlayer);   // 载入该乐谱（音色库已从缓存/网络就绪）
   } catch(e){
     status.innerHTML = '<span class="err">打开失败：'+esc((e&&e.message)||(e&&e.name)||e||"未知错误")+'</span>';
   }
+  // 打开超时看门狗：若 15s 后仍卡在解析/渲染（播放器初始化卡死或极慢），自动回退到「仅查看」模式，
+  // 让用户至少能看谱；若失败是主线程死循环（罕见），则需手动勾选「仅查看模式」后重新打开。
+  if(openWatchdog) clearTimeout(openWatchdog);
+  openWatchdog = setTimeout(function(){
+    if(/正在解析乐谱|正在渲染/.test(status.textContent) || !(api && api.score)){
+      if(currentBlobUrl){
+        status.innerHTML = '<span class="warn">该乐谱播放引擎初始化超时（常见于跨小节延线/反复等复杂结构触发 alphaTab 播放限制）。'+
+          '已自动切换为「仅查看」模式——可正常查看，但暂不可试听。若需试听，请在 MuseScore 中展开反复/简化后重新导出。</span>';
+        ensureApiWithFile(currentBlobUrl, false);
+      }
+    }
+  }, 15000);
 }
 
 // 文件选择
@@ -554,14 +588,6 @@ window.addEventListener("error", function(e){
 initDomControls();
 disableAllControls();        // 资源就绪前一律置灰，不给用
 ensureApi();                 // 进入页面即下载音色库并显示真实进度（状态栏由下载逻辑更新）
-
-// 看门狗：若 15 秒仍在解析，给出排查指引
-setTimeout(function(){
-  if(/正在解析乐谱|正在渲染/.test(status.textContent)){
-    status.innerHTML = '<span class="err">处理超时（15s）。若已通过 http:// 访问：按 F12 打开控制台，把红色报错截图；'+
-      '常见原因：文件不是有效的 MusicXML，或 Bravura 字体未加载（需 player/font/ 目录）。</span>';
-  }
-}, 15000);
 
 // 离线支持：注册 Service Worker 缓存静态资源（含 14MB 音色库），断网也能渲染并播放（渐进增强）
 if('serviceWorker' in navigator){
