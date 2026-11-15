@@ -427,18 +427,21 @@ async function startSoundFontDownload(){
     }
   } catch(e){}
 
-  // 2) 未命中：优先快速 CDN，失败回退本地
+  // 2) 未命中：本地优先（localhost/file 下瞬时可取，避免慢 CDN 拖几分钟），失败回退 CDN。
+  //    线上（GitHub Pages 等）则 CDN 优先（规避 GitHub 大文件慢带宽），本地兜底。每个源加超时，绝不无限挂起。
   if(!resp){
-    const sources = [
-      "https://cdn.jsdelivr.net/gh/caiyc-xd/openscores@main/player/FluidR3_GM.sf3",
-      localUrl
-    ];
+    const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:";
+    const CDN = "https://cdn.jsdelivr.net/gh/caiyc-xd/openscores@main/player/FluidR3_GM.sf3";
+    const sources = isLocal ? [localUrl, CDN] : [CDN, localUrl];
     for(let i=0;i<sources.length;i++){
       const src = sources[i];
       try {
-        const r = await fetch(src, src === localUrl ? {} : { mode: "cors" });
+        const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+        const to = ctrl ? setTimeout(function(){ ctrl.abort(); }, src === localUrl ? 20000 : 8000) : null;
+        const r = await fetch(src, Object.assign(src === localUrl ? {} : { mode: "cors" }, ctrl ? { signal: ctrl.signal } : {}));
+        if(to) clearTimeout(to);
         if(r && r.ok){ resp = r; break; }
-      } catch(e){ /* 试下一个源 */ }
+      } catch(e){ /* 试下一个源（含超时 abort） */ }
     }
   }
 
