@@ -466,12 +466,11 @@ async function startSoundFontDownload(){
     }
   } catch(e){}
 
-  // 2) 未命中：本地优先（localhost/file 下瞬时可取，避免慢 CDN 拖几分钟），失败回退 CDN。
-  //    线上（GitHub Pages 等）则 CDN 优先（规避 GitHub 大文件慢带宽），本地兜底。每个源加超时，绝不无限挂起。
+  // 2) 站点同源优先：本地与线上都先取本站的 player/FluidR3_GM.sf3（实测 GitHub Pages 直供约 5s/2.8MB/s；
+  //    jsdelivr CDN 反而可能极慢，实测 86KB/s）。CDN 仅作兜底。每个源加超时，绝不无限挂起。
   if(!resp){
-    const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.protocol === "file:";
     const CDN = "https://cdn.jsdelivr.net/gh/caiyc-xd/openscores@main/player/FluidR3_GM.sf3";
-    const sources = isLocal ? [localUrl, CDN] : [CDN, localUrl];
+    const sources = [localUrl, CDN];
     for(let i=0;i<sources.length;i++){
       const src = sources[i];
       try {
