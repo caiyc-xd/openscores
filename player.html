@@ -144,7 +144,7 @@ function loadScore(rel){
   // 通过构造期的 file 选项自动加载（alphaTab 内部会 fetch 并解压 .mxl）
   const api = new alphaTab.AlphaTabApi($("#alphaTab"), {
     file: fileRel,
-    core: { engine: "svg" },
+    core: { engine: "svg", useWorkers: false },
     display: { layoutMode: alphaTab.LayoutMode.Page },
     player: { enablePlayer: true, soundFont: "player/FluidR3_GM.sf3", enableCursor: true }
   });
@@ -174,7 +174,12 @@ function loadScore(rel){
     rebuildPages();
     setTimeout(rebuildPages, 400); // 兜底：首屏渲染 svg 可能晚于 renderFinished 入 DOM
   });
-  api.scoreLoaded.on(function(){ status.textContent = "就绪。点击「播放」试听合成示意。"; rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed(); });
+  api.scoreLoaded.on(function(){ status.textContent = "就绪。点击「播放」试听合成示意。"; rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
+    // 1.9.0 在播放器就绪前可能丢弃初期渲染：延迟补渲染，确保谱面出现
+    setTimeout(forceRenderIfEmpty, 400); setTimeout(forceRenderIfEmpty, 1200);
+    setTimeout(function(){ forceRenderIfEmpty(); if(root.querySelectorAll('svg').length>0) status.textContent = "就绪。点击「播放」试听合成示意。"; }, 2600); });
+  // 播放器就绪（音色库+MIDI 就绪）时补渲染一次
+  if(api.playerReady && api.playerReady.on){ api.playerReady.on(function(){ forceRenderIfEmpty(); }); }
 
   $("#play").onclick = () => { try { api.playPause(); } catch(e){ status.innerHTML='<span class="err">播放失败：'+esc(e.message)+'</span>'; } };
   $("#stop").onclick = () => { try { api.stop(); $("#fill").style.width="0%"; $("#time").textContent="0:00 / 0:00"; } catch(e){} };
@@ -226,6 +231,9 @@ function loadScore(rel){
   function renderCurrent(){
     const tr = currentTracks();
     if(tr && tr.length) api.renderTracks(tr);
+  }
+  function forceRenderIfEmpty(){
+    if(api && api.score && root.querySelectorAll("svg").length === 0){ try { renderCurrent(); } catch(e){} }
   }
   function rebuildPartOptions(){
     const sc = api.score;
