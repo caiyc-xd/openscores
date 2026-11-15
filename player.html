@@ -104,6 +104,7 @@
 </footer>
 
 <script src="player/alphaTab.min.js"></script>
+<script src="player/navfix.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const status = $("#status");
@@ -174,7 +175,10 @@ function loadScore(rel){
     rebuildPages();
     setTimeout(rebuildPages, 400); // 兜底：首屏渲染 svg 可能晚于 renderFinished 入 DOM
   });
-  api.scoreLoaded.on(function(){ status.textContent = "就绪。点击「播放」试听合成示意。"; rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
+  api.scoreLoaded.on(function(){ status.textContent = "就绪。点击「播放」试听合成示意。";
+    // D.S./D.C. 的停止点（Fine / To Coda）需按整谱标记补全，否则跳回去会一路播到曲末
+    if(window.ScoreNavFix) window.ScoreNavFix.apply(api);
+    rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
     // 1.9.0 在播放器就绪前可能丢弃初期渲染：延迟补渲染，确保谱面出现
     setTimeout(forceRenderIfEmpty, 400); setTimeout(forceRenderIfEmpty, 1200);
     setTimeout(function(){ forceRenderIfEmpty(); if(root.querySelectorAll('svg').length>0) status.textContent = "就绪。点击「播放」试听合成示意。"; }, 2600); });

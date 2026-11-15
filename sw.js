@@ -13,6 +13,7 @@ const PRECACHE = [
   './my-score.html',
   './style.css',
   './player/alphaTab.min.js',
+  './player/navfix.js',
   // 14MB 音色库不在此预缓存：改由页面用 CDN 优先拉取并写入同一缓存，规避 GitHub Pages 慢带宽
   './licenses/Bravura-OFL-1.1.txt',
   './licenses/FluidR3Mono_GM-MIT.txt',

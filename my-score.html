@@ -150,6 +150,7 @@
 </footer>
 
 <script src="player/alphaTab.min.js"></script>
+<script src="player/navfix.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const status = $("#status");
@@ -230,6 +231,8 @@ function bindApi(a){
   }
   a.scoreLoaded.on(function(){
     if(openWatchdog) clearTimeout(openWatchdog);   // 载入成功，撤销超时看门狗
+    // D.S./D.C. 的停止点（Fine / To Coda）需按整谱标记补全，否则跳回去会一路播到曲末
+    if(window.ScoreNavFix) window.ScoreNavFix.apply(a);
     rebuildPartOptions(); renderCurrent(); applyTrackAudio(); applySpeed();
     applySoundFont();   // 若音色库在乐谱载入后才就绪，这里补加载（时序兜底）
     // 1.9.0 在播放器就绪前可能丢弃初期渲染：多次延迟补渲染，确保谱面最终出现
