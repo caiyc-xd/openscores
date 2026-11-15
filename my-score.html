@@ -376,56 +376,114 @@ function applySoundFont(){
   }
 }
 
-// 进入页面即流式下载 14MB 音色库，用真实进度驱动进度条；完成后以 blob: URL 交给播放器。
-// 该 fetch 走 Service Worker，会被缓存，从而断网也可复用（离线时由 SW 直供）。
-function startSoundFontDownload(){
+// 进入页面即准备 14MB 音色库：优先用缓存（刷新秒出、不再重复下载），
+// 未命中缓存时优先走快速 CDN（规避 GitHub Pages 慢带宽），失败回退本地；最终以 blob: URL 交给播放器。
+// 取得的字节写入 Service Worker 缓存（同一 key），刷新/离线均可复用，且全程不依赖网络之外的服务器。
+async function startSoundFontDownload(){
   if(soundFontBlobUrl || soundFontFetching) return;
   soundFontFetching = true;
+  const localUrl = "player/FluidR3_GM.sf3";
+  const CACHE_NAME = "openscores-static-v2";
   showLoad(0.001);
-  status.textContent = "正在下载合成音色库（约 14MB）… 0%";
-  fetch("player/FluidR3_GM.sf3").then(function(res){
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const total = parseInt(res.headers.get("Content-Length") || "0", 10);
-    const bar = $("#loadbar");
-    if(total > 0) bar.classList.remove("indeterminate");
-    else bar.classList.add("indeterminate");   // 无 Content-Length 时显示流动条
-    if(!res.body || !res.body.getReader){
-      // 环境不支持流式读取：退化为整段下载（无中途进度）
-      return res.arrayBuffer().then(function(buf){
-        soundFontBlobUrl = URL.createObjectURL(new Blob([buf], {type:"application/octet-stream"}));
+  status.textContent = "正在准备合成音色库（约 14MB）…";
+
+  // 1) 先看缓存：刷新后秒出，绝不重复下载
+  let resp = null, fromCache = false;
+  try {
+    if(window.caches){
+      const m = await caches.match(localUrl, { cacheName: CACHE_NAME });
+      if(m){ resp = m; fromCache = true; }
+    }
+  } catch(e){}
+
+  // 2) 未命中：优先快速 CDN，失败回退本地
+  if(!resp){
+    const sources = [
+      "https://cdn.jsdelivr.net/gh/caiyc-xd/openscores@main/player/FluidR3_GM.sf3",
+      localUrl
+    ];
+    for(let i=0;i<sources.length;i++){
+      const src = sources[i];
+      try {
+        const r = await fetch(src, src === localUrl ? {} : { mode: "cors" });
+        if(r && r.ok){ resp = r; break; }
+      } catch(e){ /* 试下一个源 */ }
+    }
+  }
+
+  if(!resp || !resp.ok){
+    soundFontFetching = false;
+    const offline = (typeof navigator !== "undefined" && navigator.onLine === false);
+    status.innerHTML = '<span class="err">音色库下载失败：'+
+      (offline ? '当前离线且未缓存。请先联网打开本页面一次（无需打开乐谱），等待音色库下载完成后再断网验证。'
+               : '请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试。')+'</span>';
+    return;
+  }
+
+  // 3) 字节写入缓存（供下次刷新/离线复用）；来自缓存则跳过
+  try {
+    if(window.caches && !fromCache){
+      const cc = resp.clone();
+      await caches.open(CACHE_NAME).then(c => c.put(localUrl, cc)).catch(()=>{});
+    }
+  } catch(e){}
+
+  // 4) 来自缓存：直接整段读取（离线/秒出）
+  if(fromCache){
+    try {
+      const buf = await resp.arrayBuffer();
+      soundFontBlobUrl = URL.createObjectURL(new Blob([buf], {type:"application/octet-stream"}));
+      showLoad(1);
+      status.textContent = "已从缓存加载合成音色库（离线可用）。";
+      setTimeout(applySoundFont, 150);
+    } catch(e){
+      soundFontFetching = false;
+      status.innerHTML = '<span class="err">音色库读取失败：'+esc((e&&e.message)||e||"")+'</span>';
+    }
+    return;
+  }
+
+  // 5) 来自网络：流式读取并实时上报进度
+  const total = parseInt(resp.headers.get("Content-Length") || "0", 10);
+  const bar = $("#loadbar");
+  if(total > 0) bar.classList.remove("indeterminate"); else bar.classList.add("indeterminate");
+  let reader = null;
+  try { if(resp.body && resp.body.getReader) reader = resp.body.getReader(); } catch(e){ reader = null; }
+  if(!reader){
+    try {
+      const buf = await resp.arrayBuffer();
+      soundFontBlobUrl = URL.createObjectURL(new Blob([buf], {type:"application/octet-stream"}));
+      showLoad(1); status.textContent = "合成音色库已下载。";
+      setTimeout(applySoundFont, 200);
+    } catch(e){
+      soundFontFetching = false;
+      status.innerHTML = '<span class="err">音色库读取失败：'+esc((e&&e.message)||e||"")+'</span>';
+    }
+    return;
+  }
+  const chunks = []; let received = 0;
+  function pump(){
+    return reader.read().then(function(r){
+      if(r.done){
+        const all = new Uint8Array(received);
+        let pos = 0;
+        for(let i=0;i<chunks.length;i++){ all.set(chunks[i], pos); pos += chunks[i].length; }
+        soundFontBlobUrl = URL.createObjectURL(new Blob([all], {type:"application/octet-stream"}));
         showLoad(1);
         status.textContent = "合成音色库已下载。";
         setTimeout(applySoundFont, 200);
-      });
-    }
-    const reader = res.body.getReader();
-    const chunks = []; let received = 0;
-    function pump(){
-      return reader.read().then(function(r){
-        if(r.done){
-          const all = new Uint8Array(received);
-          let pos = 0;
-          for(let i=0;i<chunks.length;i++){ all.set(chunks[i], pos); pos += chunks[i].length; }
-          soundFontBlobUrl = URL.createObjectURL(new Blob([all], {type:"application/octet-stream"}));
-          showLoad(1);
-          status.textContent = "合成音色库已下载。";
-          setTimeout(applySoundFont, 200);   // 让用户看到 100% 再加载
-          return;
-        }
-        chunks.push(r.value); received += r.value.length;
-        const frac = total ? received/total : 0;
-        if(total) showLoad(frac);
-        status.textContent = "正在下载合成音色库（约 14MB）… " + Math.round(frac*100) + "%";
-        return pump();
-      });
-    }
-    return pump();
-  }).catch(function(err){
+        return;
+      }
+      chunks.push(r.value); received += r.value.length;
+      const frac = total ? received/total : 0;
+      if(total) showLoad(frac);
+      status.textContent = "正在下载合成音色库（约 14MB）… " + Math.round(frac*100) + "%";
+      return pump();
+    });
+  }
+  pump().catch(function(err){
     soundFontFetching = false;
-    const offline = (typeof navigator !== "undefined" && navigator.onLine === false);
-    status.innerHTML = '<span class="err">音色库下载失败：'+esc((err&&err.message)||err||"未知错误")+'（'+
-      (offline ? '当前离线且未缓存。请先联网打开本页面一次（无需打开乐谱），等待音色库下载完成后再断网验证。'
-               : '请确认 player/FluidR3_GM.sf3 已随仓库完整下载，并刷新页面重试。')+'）</span>';
+    status.innerHTML = '<span class="err">音色库读取失败：'+esc((err&&err.message)||err||"")+'</span>';
   });
 }
 

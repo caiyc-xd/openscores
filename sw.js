@@ -13,7 +13,7 @@ const PRECACHE = [
   './my-score.html',
   './style.css',
   './player/alphaTab.min.js',
-  './player/FluidR3_GM.sf3',
+  // 14MB 音色库不在此预缓存：改由页面用 CDN 优先拉取并写入同一缓存，规避 GitHub Pages 慢带宽
   './licenses/Bravura-OFL-1.1.txt',
   './licenses/FluidR3Mono_GM-MIT.txt',
   './licenses/alphaTab-MPL-2.0.txt'
@@ -28,8 +28,8 @@ self.addEventListener('activate', (event) => {
     await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
-  // 后台预缓存大体积资源（含音色库），不阻塞激活
-  caches.open(CACHE).then(c => c.addAll(PRECACHE)).catch(() => {});
+  // 后台预缓存：逐项缓存，避免 addAll 因单个资源失败而整批不缓存
+  caches.open(CACHE).then(c => Promise.allSettled(PRECACHE.map(u => c.add(u)))).catch(() => {});
 });
 
 self.addEventListener('fetch', (event) => {
